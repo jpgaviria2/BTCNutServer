@@ -79,9 +79,17 @@ When registering with Plugin Builder:
 
 **Important for Plugin Builder:** The plugin uses a custom `AssemblyName` (`btcnutserver-test`) that differs from the project name. 
 
-If Plugin Builder asks for an assembly name or slug, use: **`btcnutserver-test`**
+**When configuring Plugin Builder:**
+- If Plugin Builder asks for an **assembly name** or **plugin slug**, use: **`btcnutserver-test`**
+- The repository includes:
+  - `entrypoint.sh` - Script that extracts AssemblyName from .csproj (if Plugin Builder supports custom entrypoints)
+  - `plugin-metadata.json` - Contains the assembly name and plugin identifier for reference
 
-The repository includes an `entrypoint.sh` script that automatically extracts the correct assembly name from the .csproj file. If Plugin Builder supports custom entrypoint scripts, it will use this to ensure the correct assembly name is used.
+**The assembly name must match the plugin identifier:**
+- Assembly name in .csproj: `btcnutserver-test`
+- Plugin identifier in code: `btcnutserver-test`
+- DLL name: `btcnutserver-test.dll`
+- Plugin slug for Plugin Builder: `btcnutserver-test`
 
 ### Custom CI/CD
 
