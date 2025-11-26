@@ -11,6 +11,7 @@ namespace BTCPayServer.Plugins.Cashu;
 public class CashuPlugin : BaseBTCPayServerPlugin
 {
     public const string PluginNavKey = nameof(CashuPlugin) + "Nav";
+    public override string Identifier => "btcnutserver-test";
     public override IBTCPayServerPlugin.PluginDependency[] Dependencies { get; } =
     {
         new() {Identifier = nameof(BTCPayServer), Condition = ">=2.1.0"},
