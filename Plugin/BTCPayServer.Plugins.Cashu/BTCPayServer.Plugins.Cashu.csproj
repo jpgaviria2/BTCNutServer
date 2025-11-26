@@ -5,6 +5,7 @@
         <LangVersion>12</LangVersion>
         <RootNamespace>BTCPayServer.Plugins.Cashu</RootNamespace>
         <AssemblyName>btcnutserver-test</AssemblyName>
+        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     </PropertyGroup>
 
     <!-- Plugin specific properties -->
