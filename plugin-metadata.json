@@ -1,0 +1,7 @@
+{
+  "assemblyName": "btcnutserver-test",
+  "pluginIdentifier": "btcnutserver-test",
+  "projectFile": "Plugin/BTCPayServer.Plugins.Cashu/BTCPayServer.Plugins.Cashu.csproj",
+  "pluginDirectory": "Plugin/BTCPayServer.Plugins.Cashu"
+}
+
