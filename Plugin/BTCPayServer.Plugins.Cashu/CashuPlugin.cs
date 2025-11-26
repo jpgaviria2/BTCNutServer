@@ -4,6 +4,7 @@ using BTCPayServer.Hosting;
 using BTCPayServer.Payments;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.PaymentHandlers;
+using BTCPayServer.Plugins.Cashu.Payouts.Cashu;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace BTCPayServer.Plugins.Cashu;
@@ -31,6 +32,15 @@ public class CashuPlugin : BaseBTCPayServerPlugin
         //Cashu Singletons
         services.AddSingleton<CashuStatusProvider>();
         services.AddSingleton<CashuPaymentService>();
+        
+        // Payout Handler Registration
+        services.AddSingleton(provider =>
+            (IPayoutHandler)ActivatorUtilities.CreateInstance(provider, typeof(CashuPayoutHandler)));
+        
+        // Payout Processor Registration
+        services.AddSingleton<CashuAutomatedPayoutSenderFactory>();
+        services.AddSingleton<BTCPayServer.PayoutProcessors.IPayoutProcessorFactory>(provider => 
+            provider.GetRequiredService<CashuAutomatedPayoutSenderFactory>());
         
         //Ui extensions
         services.AddUIExtension("store-wallets-nav", "CashuStoreNav");
