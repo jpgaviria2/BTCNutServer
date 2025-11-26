@@ -3,6 +3,19 @@
 ## ⚠️ Disclaimer
 This plugin is in early beta – use with caution. The author is NOT a cryptographer and this work has not been reviewed. This means that there is very likely a fatal flaw somewhere. Cashu is still experimental and not production-ready.
 
+## Building the Plugin
+
+For build instructions, see [BUILD_INSTRUCTIONS.md](BUILD_INSTRUCTIONS.md).
+
+**Quick build:**
+```bash
+./build-plugin.sh        # Linux/macOS
+.\build-plugin.ps1        # Windows PowerShell
+./scripts/build-plugin.sh # CI/CD environments
+```
+
+**Important:** The plugin assembly name is `btcnutserver-test`. CI/CD environments must use this name when calling PluginPacker, not the project name `BTCPayServer.Plugins.Cashu`.
+
 ## Overview
 
 BTCNutServer enables BTCPay Server to accept Bitcoin payments via **Cashu tokens**, offering two flexible payment models:
