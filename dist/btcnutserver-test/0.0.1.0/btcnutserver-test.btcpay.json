@@ -1,0 +1,1 @@
+{"Identifier":"btcnutserver-test","Name":"BTCNutServer","Version":"0.0.1.0","Description":"Enables trustless Cashu eCash payments in BTCPay Server. Early beta, don\u0027t be reckless.","SystemPlugin":false,"Dependencies":[{"Identifier":"BTCPayServer","Condition":"\u003E=2.1.0"}]}

@@ -1,26 +1,29 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
 
-    <PropertyGroup>
-        <TargetFramework>net8.0</TargetFramework>
-        <LangVersion>12</LangVersion>
-        <RootNamespace>BTCPayServer.Plugins.Cashu</RootNamespace>
-        <AssemblyName>btcnutserver-test</AssemblyName>
-        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    </PropertyGroup>
+  <!-- Plugin specific properties -->
+  <PropertyGroup>
+    <Product>BTCNutServer</Product>
+    <Description>Enables trustless Cashu eCash payments in BTCPay Server. Early beta, don't be reckless.</Description>
+    <Version>0.0.1</Version>
+    <AssemblyName>btcnutserver-test</AssemblyName>
+    <RootNamespace>BTCPayServer.Plugins.Cashu</RootNamespace>
+  </PropertyGroup>
 
-    <!-- Plugin specific properties -->
-    <PropertyGroup>
-        <Product>BTCNutServer</Product>
-        <Description>Enables trustless Cashu eCash payments in BTCPay Server. Early beta, don't be reckless.</Description>
-        <Version>0.0.1</Version>
-        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
-    </PropertyGroup>
-    <!-- Plugin development properties -->
-    <PropertyGroup>
-        <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
-        <PreserveCompilationContext>false</PreserveCompilationContext>
-        <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
-    </PropertyGroup>
+  <!-- Plugin development properties -->
+  <PropertyGroup>
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+    <PreserveCompilationContext>false</PreserveCompilationContext>
+    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
+    <RazorCompileOnBuild>true</RazorCompileOnBuild>
+    <RazorCompileOnPublish>true</RazorCompileOnPublish>
+    <EnableDefaultRazorCompileItems>true</EnableDefaultRazorCompileItems>
+    <RazorGenerateAssemblyInfo>true</RazorGenerateAssemblyInfo>
+    <MvcRazorCompileOnPublish>true</MvcRazorCompileOnPublish>
+    <MvcRazorExcludeRefAssembliesFromPublish>false</MvcRazorExcludeRefAssembliesFromPublish>
+  </PropertyGroup>
 
     <!-- This will make sure that referencing BTCPayServer doesn't put any artifact in the published directory -->
     <ItemDefinitionGroup>
@@ -51,11 +54,13 @@
         <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
     </ItemGroup>
 
-    <ItemGroup>
-        <ProjectReference Include="..\..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" />
-        <ProjectReference Include="..\..\submodules\btcpayserver\BTCPayServer.Common\BTCPayServer.Common.csproj" Private="true" />
-        <EmbeddedResource Include="Resources\**" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\**" />
+  </ItemGroup>
 
     <ItemGroup>
         <Folder Include="Data\Migrations\" />

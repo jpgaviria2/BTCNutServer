@@ -1,0 +1,97 @@
+<Project>
+  <!-- This file ensures BTCPay Server dependencies are restored before any project references are resolved -->
+  
+  <!-- Initialize Git submodules if they're not already initialized -->
+  <!-- This is critical for Plugin Builder which may not initialize submodules automatically -->
+  <Target Name="InitializeSubmodules" BeforeTargets="RestoreBTCPayServerDependencies" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Message Text="=== [Directory.Build.targets] Checking Git submodules ===" Importance="high" />
+    <Message Text="MSBuildProjectDirectory: $(MSBuildProjectDirectory)" Importance="high" />
+    
+    <!-- Find the repository root by looking for .git directory -->
+    <PropertyGroup>
+      <_RepoRoot>$(MSBuildProjectDirectory)</_RepoRoot>
+      <_RepoRoot Condition="!Exists('$(_RepoRoot)/.git') AND Exists('$(_RepoRoot)/../.git')">$([System.IO.Path]::GetFullPath('$(_RepoRoot)/..'))</_RepoRoot>
+      <_RepoRoot Condition="!Exists('$(_RepoRoot)/.git') AND Exists('$(_RepoRoot)/../../.git')">$([System.IO.Path]::GetFullPath('$(_RepoRoot)/../..'))</_RepoRoot>
+    </PropertyGroup>
+    
+    <Message Text="Repository root: $(_RepoRoot)" Importance="high" />
+    
+    <!-- Check if submodules directory exists but is empty (not initialized) -->
+    <PropertyGroup>
+      <_BTCPayServerSubmodulePath>$(_RepoRoot)/submodules</_BTCPayServerSubmodulePath>
+      <_SubmoduleExists>false</_SubmoduleExists>
+      <_SubmoduleExists Condition="Exists('$(_BTCPayServerSubmodulePath)')">true</_SubmoduleExists>
+      <_SubmoduleInitialized>false</_SubmoduleInitialized>
+      <_SubmoduleInitialized Condition="Exists('$(_BTCPayServerSubmodulePath)/btcpayserver/btcpayserver.sln') OR Exists('$(_BTCPayServerSubmodulePath)/btcpayserver.sln')">true</_SubmoduleInitialized>
+    </PropertyGroup>
+    
+    <Message Text="BTCPay Server submodule path: $(_BTCPayServerSubmodulePath)" Importance="high" />
+    <Message Text="Submodule directory exists: $(_SubmoduleExists)" Importance="high" />
+    <Message Text="Submodule initialized (btcpayserver.sln exists): $(_SubmoduleInitialized)" Importance="high" />
+    
+    <!-- Initialize submodules if .gitmodules exists and submodule is not initialized -->
+    <Exec Condition="Exists('$(_RepoRoot)/.gitmodules') AND !$(_SubmoduleInitialized)"
+          Command="git submodule update --init --recursive"
+          WorkingDirectory="$(_RepoRoot)"
+          ContinueOnError="true"
+          IgnoreExitCode="true" />
+    
+    <Message Condition="Exists('$(_RepoRoot)/.gitmodules') AND !$(_SubmoduleInitialized)" 
+             Text="Attempted to initialize submodules" Importance="high" />
+  </Target>
+  
+  <Target Name="RestoreBTCPayServerDependencies" BeforeTargets="Restore" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Message Text="=== [Directory.Build.targets] Restoring BTCPay Server dependencies ===" Importance="high" />
+    <Message Text="MSBuildProjectDirectory: $(MSBuildProjectDirectory)" Importance="high" />
+    
+    <!-- Find the repository root -->
+    <PropertyGroup>
+      <_RepoRoot>$(MSBuildProjectDirectory)</_RepoRoot>
+      <_RepoRoot Condition="!Exists('$(_RepoRoot)/.git') AND Exists('$(_RepoRoot)/../.git')">$([System.IO.Path]::GetFullPath('$(_RepoRoot)/..'))</_RepoRoot>
+      <_RepoRoot Condition="!Exists('$(_RepoRoot)/.git') AND Exists('$(_RepoRoot)/../../.git')">$([System.IO.Path]::GetFullPath('$(_RepoRoot)/../..'))</_RepoRoot>
+    </PropertyGroup>
+    
+    <!-- Try multiple possible paths for the solution file -->
+    <PropertyGroup>
+      <_BTCPayServerSolutionPath1>$(_RepoRoot)/submodules/btcpayserver/btcpayserver.sln</_BTCPayServerSolutionPath1>
+      <_BTCPayServerSolutionPath2>$(_RepoRoot)/submodules/btcpayserver.sln</_BTCPayServerSolutionPath2>
+      <_BTCPayServerSolutionPath3>$(MSBuildProjectDirectory)/../submodules/btcpayserver/btcpayserver.sln</_BTCPayServerSolutionPath3>
+      <_BTCPayServerSolutionPath4>$(MSBuildProjectDirectory)/../../submodules/btcpayserver/btcpayserver.sln</_BTCPayServerSolutionPath4>
+      <_BTCPayServerSolutionPath5>../submodules/btcpayserver/btcpayserver.sln</_BTCPayServerSolutionPath5>
+      <_BTCPayServerSolutionPath6>../../submodules/btcpayserver/btcpayserver.sln</_BTCPayServerSolutionPath6>
+    </PropertyGroup>
+    
+    <!-- Check which path exists -->
+    <PropertyGroup>
+      <BTCPayServerSolutionPath Condition="Exists('$(_BTCPayServerSolutionPath1)')">$(_BTCPayServerSolutionPath1)</BTCPayServerSolutionPath>
+      <BTCPayServerSolutionPath Condition="'$(BTCPayServerSolutionPath)' == '' AND Exists('$(_BTCPayServerSolutionPath2)')">$(_BTCPayServerSolutionPath2)</BTCPayServerSolutionPath>
+      <BTCPayServerSolutionPath Condition="'$(BTCPayServerSolutionPath)' == '' AND Exists('$(_BTCPayServerSolutionPath3)')">$(_BTCPayServerSolutionPath3)</BTCPayServerSolutionPath>
+      <BTCPayServerSolutionPath Condition="'$(BTCPayServerSolutionPath)' == '' AND Exists('$(_BTCPayServerSolutionPath4)')">$(_BTCPayServerSolutionPath4)</BTCPayServerSolutionPath>
+      <BTCPayServerSolutionPath Condition="'$(BTCPayServerSolutionPath)' == '' AND Exists('$(_BTCPayServerSolutionPath5)')">$(_BTCPayServerSolutionPath5)</BTCPayServerSolutionPath>
+      <BTCPayServerSolutionPath Condition="'$(BTCPayServerSolutionPath)' == '' AND Exists('$(_BTCPayServerSolutionPath6)')">$(_BTCPayServerSolutionPath6)</BTCPayServerSolutionPath>
+    </PropertyGroup>
+    
+    <Message Condition="'$(BTCPayServerSolutionPath)' != ''" Text="Solution file found at: $(BTCPayServerSolutionPath)" Importance="high" />
+    <Message Condition="'$(BTCPayServerSolutionPath)' == ''" Text="WARNING: Solution file NOT found in any expected location!" Importance="high" />
+    <Message Condition="'$(BTCPayServerSolutionPath)' == ''" Text="  Checked: $(_BTCPayServerSolutionPath1)" Importance="high" />
+    <Message Condition="'$(BTCPayServerSolutionPath)' == ''" Text="  Checked: $(_BTCPayServerSolutionPath2)" Importance="high" />
+    <Message Condition="'$(BTCPayServerSolutionPath)' == ''" Text="  Checked: $(_BTCPayServerSolutionPath3)" Importance="high" />
+    <Message Condition="'$(BTCPayServerSolutionPath)' == ''" Text="  Checked: $(_BTCPayServerSolutionPath4)" Importance="high" />
+    <Message Condition="'$(BTCPayServerSolutionPath)' == ''" Text="  Checked: $(_BTCPayServerSolutionPath5)" Importance="high" />
+    
+    <!-- Restore BTCPay Server solution -->
+    <Exec Condition="'$(BTCPayServerSolutionPath)' != ''" 
+          Command="dotnet restore &quot;$(BTCPayServerSolutionPath)&quot; --verbosity minimal" 
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ContinueOnError="false" />
+    
+    <Message Condition="'$(BTCPayServerSolutionPath)' != ''" Text="=== [Directory.Build.targets] BTCPay Server restore completed ===" Importance="high" />
+  </Target>
+
+  <!-- Note: We no longer need BuildBTCPayServerDependencies target because: -->
+  <!-- 1. We have direct ProjectReferences to all required BTCPayServer projects -->
+  <!-- 2. MSBuild will automatically build referenced projects and their dependencies -->
+  <!-- 3. This is much more efficient than building the entire solution -->
+  <!-- 4. The RestoreBTCPayServerDependencies target ensures packages are restored first -->
+</Project>
+
