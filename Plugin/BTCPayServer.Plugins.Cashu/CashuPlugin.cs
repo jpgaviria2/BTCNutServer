@@ -33,6 +33,17 @@ public class CashuPlugin : BaseBTCPayServerPlugin
             (IPaymentMethodHandler)ActivatorUtilities.CreateInstance(provider, typeof(CashuPaymentMethodHandler)));
         services.AddSingleton(provider =>
             (ICheckoutModelExtension)ActivatorUtilities.CreateInstance(provider, typeof(CashuCheckoutModelExtension)));
+        
+        // Payment Link Extension Registration
+        services.AddSingleton<PaymentHandlers.CashuPaymentLinkExtension>();
+        services.AddSingleton<IPaymentLinkExtension>(provider => 
+            provider.GetRequiredService<PaymentHandlers.CashuPaymentLinkExtension>());
+        
+        // Cheat Mode Extension Registration (for development/testing)
+        services.AddSingleton<PaymentHandlers.CashuCheckoutCheatModeExtension>();
+        services.AddSingleton<ICheckoutCheatModeExtension>(provider => 
+            provider.GetRequiredService<PaymentHandlers.CashuCheckoutCheatModeExtension>());
+        
         services.AddDefaultPrettyName(CashuPmid, CashuDisplayName);
         
         //Cashu Singletons
@@ -47,6 +58,11 @@ public class CashuPlugin : BaseBTCPayServerPlugin
         services.AddSingleton<CashuAutomatedPayoutSenderFactory>();
         services.AddSingleton<BTCPayServer.PayoutProcessors.IPayoutProcessorFactory>(provider => 
             provider.GetRequiredService<CashuAutomatedPayoutSenderFactory>());
+        
+        // Mint State Monitor (for background payout checking)
+        services.AddSingleton<Services.CashuMintStateMonitor>();
+        services.AddHostedService<Services.CashuMintStateMonitor>(provider => 
+            provider.GetRequiredService<Services.CashuMintStateMonitor>());
         
         //Ui extensions
         services.AddUIExtension("store-wallets-nav", "CashuStoreNav");
