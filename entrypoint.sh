@@ -91,6 +91,23 @@ PUBLISH_DIR="${PLUGIN_PUBLISH_DIR:-/tmp/publish}"
 PLUGIN_PACKER="${PLUGIN_PACKER:-/build-tools/PluginPacker/BTCPayServer.PluginPacker}"
 OUTPUT_DIR="${PLUGIN_OUTPUT_DIR:-/tmp/publish-package}"
 
+# Debug: Print environment and file locations
+echo "=== Plugin Builder Entrypoint Debug ===" >&2
+echo "Working directory: $(pwd)" >&2
+echo "Metadata file: $METADATA_FILE" >&2
+echo "Project file: $PROJECT_FILE" >&2
+echo "Publish dir: $PUBLISH_DIR" >&2
+echo "Plugin packer: $PLUGIN_PACKER" >&2
+echo "Output dir: $OUTPUT_DIR" >&2
+
+# Check if metadata file exists
+if [ -f "$METADATA_FILE" ]; then
+    echo "Metadata file exists, contents:" >&2
+    cat "$METADATA_FILE" >&2
+else
+    echo "Warning: Metadata file not found at $METADATA_FILE" >&2
+fi
+
 # Extract the assembly name using fallback chain
 ASSEMBLY_NAME=$(get_assembly_name "$METADATA_FILE" "$PROJECT_FILE")
 
@@ -98,6 +115,20 @@ if [ -z "$ASSEMBLY_NAME" ]; then
     echo "Error: Failed to extract assembly name" >&2
     exit 1
 fi
+
+echo "=== Extracted Assembly Name: $ASSEMBLY_NAME ===" >&2
+
+# Verify DLL exists before calling PluginPacker
+DLL_PATH="$PUBLISH_DIR/$ASSEMBLY_NAME.dll"
+echo "Checking for DLL at: $DLL_PATH" >&2
+if [ ! -f "$DLL_PATH" ]; then
+    echo "Error: DLL not found at $DLL_PATH" >&2
+    echo "Files in publish directory:" >&2
+    ls -la "$PUBLISH_DIR" >&2
+    exit 1
+fi
+
+echo "DLL found: $DLL_PATH" >&2
 
 # Call PluginPacker with the extracted assembly name
 echo "Calling PluginPacker with assembly name: $ASSEMBLY_NAME" >&2
