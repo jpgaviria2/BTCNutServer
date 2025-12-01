@@ -14,7 +14,7 @@ public class CashuPaymentLinkExtension : IPaymentLinkExtension
 {
     public PaymentMethodId PaymentMethodId { get; } = CashuPlugin.CashuPmid;
 
-    public string GetPaymentLink(PaymentPrompt prompt, IUrlHelper? urlHelper)
+    public string? GetPaymentLink(PaymentPrompt prompt, IUrlHelper? urlHelper)
     {
         // For Cashu, the destination is already a NUT-18 payment request
         // We can return it directly or wrap it in a custom URI scheme if needed
@@ -37,8 +37,8 @@ public class CashuPaymentLinkExtension : IPaymentLinkExtension
             return prompt.Destination;
         }
 
-        // Fallback: if no destination is set, return empty string
-        return string.Empty;
+        // Fallback: if no destination is set, return null
+        return null;
     }
 }
 
