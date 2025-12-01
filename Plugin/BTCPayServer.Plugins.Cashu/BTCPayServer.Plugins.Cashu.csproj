@@ -23,7 +23,14 @@
     <RazorGenerateAssemblyInfo>true</RazorGenerateAssemblyInfo>
     <MvcRazorCompileOnPublish>true</MvcRazorCompileOnPublish>
     <MvcRazorExcludeRefAssembliesFromPublish>false</MvcRazorExcludeRefAssembliesFromPublish>
+    <!-- Exclude refs folder from publish to reduce plugin size -->
+    <PublishRefAssemblies>false</PublishRefAssemblies>
   </PropertyGroup>
+  
+  <!-- Remove refs folder after publish -->
+  <Target Name="RemoveRefsFolder" AfterTargets="Publish">
+    <RemoveDir Directories="$(PublishDir)refs" Condition="Exists('$(PublishDir)refs')" />
+  </Target>
 
     <!-- This will make sure that referencing BTCPayServer doesn't put any artifact in the published directory -->
     <ItemDefinitionGroup>

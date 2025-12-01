@@ -45,9 +45,14 @@ public class CashuAutomatedPayoutSenderFactory : IPayoutProcessorFactory
 
     public string ConfigureLink(string storeId, PayoutMethodId payoutMethodId, HttpRequest request)
     {
-        // Return empty string for now - configuration can be done via the payout processor settings UI
-        // Can be enhanced later to point to a specific configuration page
-        return string.Empty;
+        // Return link to Cashu payout processor configuration page
+        return _linkGenerator.GetUriByAction(
+            "ConfigurePayoutProcessor",
+            "Cashu",
+            new { storeId },
+            request.Scheme,
+            request.Host,
+            request.PathBase) ?? string.Empty;
     }
 }
 
