@@ -14,6 +14,10 @@ using BTCPayServer.Plugins.Cashu.CashuAbstractions;
 using BTCPayServer.Plugins.Cashu.ViewModels;
 using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
+using BTCPayServer.PayoutProcessors;
+using BTCPayServer.HostedServices;
+using BTCPayServer.Abstractions.Models;
+using BTCPayServer.Payouts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -38,7 +42,10 @@ public class CashuController: Controller
         PaymentMethodHandlerDictionary handlers,
         CashuStatusProvider cashuStatusProvider,
         CashuPaymentService cashuPaymentService,
-        CashuDbContextFactory cashuDbContextFactory)
+        CashuDbContextFactory cashuDbContextFactory,
+        Payouts.Cashu.CashuAutomatedPayoutSenderFactory payoutSenderFactory,
+        PayoutProcessorService payoutProcessorService,
+        EventAggregator eventAggregator)
     {
         _invoiceRepository = invoiceRepository;
         _storeRepository = storeRepository;
@@ -46,6 +53,9 @@ public class CashuController: Controller
         _cashuDbContextFactory = cashuDbContextFactory;
         _cashuStatusProvider = cashuStatusProvider;
         _handlers = handlers;
+        _payoutSenderFactory = payoutSenderFactory;
+        _payoutProcessorService = payoutProcessorService;
+        _eventAggregator = eventAggregator;
     }
     private StoreData StoreData => HttpContext.GetStoreData();
     
@@ -55,6 +65,9 @@ public class CashuController: Controller
     private readonly CashuStatusProvider _cashuStatusProvider;
     private readonly CashuPaymentService _cashuPaymentService;
     private readonly CashuDbContextFactory _cashuDbContextFactory;
+    private readonly Payouts.Cashu.CashuAutomatedPayoutSenderFactory _payoutSenderFactory;
+    private readonly PayoutProcessorService _payoutProcessorService;
+    private readonly EventAggregator _eventAggregator;
 
     
     /// <summary>
@@ -143,6 +156,72 @@ public class CashuController: Controller
         }
 
         return RedirectToAction("StoreConfig", new { storeId = store.Id, paymentMethodId });
+    }
+
+    /// <summary>
+    /// Configuration page for Cashu automated payout processor
+    /// </summary>
+    [HttpGet("payout-processors/cashu-automated")]
+    public async Task<IActionResult> ConfigurePayoutProcessor(string storeId)
+    {
+        var activeProcessor =
+            (await _payoutProcessorService.GetProcessors(
+                new PayoutProcessorService.PayoutProcessorQuery()
+                {
+                    Stores = new[] { storeId },
+                    Processors = new[] { _payoutSenderFactory.Processor },
+                    PayoutMethods = new[]
+                    {
+                        PayoutMethodId.Parse(CashuPlugin.CashuPmid.ToString())
+                    }
+                }))
+            .FirstOrDefault();
+
+        var blob = activeProcessor?.HasTypedBlob<Payouts.Cashu.CashuAutomatedPayoutBlob>();
+        return View(new ViewModels.ConfigureCashuPayoutProcessorViewModel(
+            blob?.GetBlob() ?? new Payouts.Cashu.CashuAutomatedPayoutBlob()));
+    }
+
+    /// <summary>
+    /// Save configuration for Cashu automated payout processor
+    /// </summary>
+    [HttpPost("payout-processors/cashu-automated")]
+    public async Task<IActionResult> ConfigurePayoutProcessor(string storeId, ViewModels.ConfigureCashuPayoutProcessorViewModel model)
+    {
+        if (!ModelState.IsValid)
+            return View(model);
+
+        var activeProcessor =
+            (await _payoutProcessorService.GetProcessors(
+                new PayoutProcessorService.PayoutProcessorQuery()
+                {
+                    Stores = new[] { storeId },
+                    Processors = new[] { _payoutSenderFactory.Processor },
+                    PayoutMethods = new[]
+                    {
+                        PayoutMethodId.Parse(CashuPlugin.CashuPmid.ToString())
+                    }
+                }))
+            .FirstOrDefault();
+
+        activeProcessor ??= new PayoutProcessorData();
+        activeProcessor.HasTypedBlob<Payouts.Cashu.CashuAutomatedPayoutBlob>().SetBlob(model.ToBlob());
+        activeProcessor.StoreId = storeId;
+        activeProcessor.PayoutMethodId = CashuPlugin.CashuPmid.ToString();
+        activeProcessor.Processor = _payoutSenderFactory.Processor;
+
+        var tcs = new TaskCompletionSource();
+        _eventAggregator.Publish(new PayoutProcessorUpdated()
+        {
+            Data = activeProcessor,
+            Id = activeProcessor.Id,
+            Processed = tcs
+        });
+
+        TempData[WellKnownTempData.SuccessMessage] = "Processor updated.";
+
+        await tcs.Task;
+        return RedirectToAction(nameof(ConfigurePayoutProcessor), "Cashu", new { storeId });
     }
 
     /// <summary>
