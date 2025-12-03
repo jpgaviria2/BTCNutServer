@@ -83,10 +83,19 @@ public class CashuPayoutHandler : IPayoutHandler
         return config != null && config.TrustedMintsUrls != null && config.TrustedMintsUrls.Count > 0;
     }
 
-    public Task TrackClaim(ClaimRequest claimRequest, PayoutData payoutData)
+    public async Task TrackClaim(ClaimRequest claimRequest, PayoutData payoutData)
     {
-        // No tracking needed for Cashu tokens
-        return Task.CompletedTask;
+        // Only generate token for direct payouts (not pull payment claims)
+        // Pull payment claims are for receiving - user provides their token
+        // Direct payouts are for sending - we generate token with QR code
+        if (payoutData.PullPaymentDataId != null)
+        {
+            // This is a pull payment claim (receiving) - no token generation needed
+            return;
+        }
+
+        // This is a direct payout (sending) - generate token immediately
+        await GenerateCashuTokenForPayoutAtCreation(payoutData, claimRequest);
     }
 
     public Task<(IClaimDestination destination, string error)> ParseClaimDestination(string destination, CancellationToken cancellationToken)
@@ -94,7 +103,9 @@ public class CashuPayoutHandler : IPayoutHandler
         destination = destination?.Trim();
         if (string.IsNullOrEmpty(destination))
         {
-            return Task.FromResult<(IClaimDestination, string)>((null!, "Destination cannot be empty"));
+            // Allow empty for payouts - validation will check context in ValidateClaimDestination
+            return Task.FromResult<(IClaimDestination, string)>(
+                (new CashuQRCodeClaimDestination(), null!));
         }
 
         // For Cashu, destination can be:
@@ -124,7 +135,20 @@ public class CashuPayoutHandler : IPayoutHandler
 
     public (bool valid, string? error) ValidateClaimDestination(IClaimDestination claimDestination, PullPaymentBlob? pullPaymentBlob)
     {
-        // For now, accept all Cashu destinations
+        // Allow QR code claim destination for direct payouts only (when pullPaymentBlob is null)
+        // For pull payment claims (receiving), destination is required
+        if (claimDestination is CashuQRCodeClaimDestination)
+        {
+            if (pullPaymentBlob == null)
+            {
+                // This is a direct payout (sending) - QR code claim is allowed
+                return (true, null);
+            }
+            // This is a pull payment claim (receiving) - destination is required
+            return (false, "Destination is required for pull payment claims");
+        }
+        
+        // For other destination types, accept them
         return (true, null);
     }
 
@@ -154,8 +178,9 @@ public class CashuPayoutHandler : IPayoutHandler
 
     public void StartBackgroundCheck(Action<Type[]> subscribe)
     {
-        // Subscribe to Cashu token state change events and payout approval events
-        subscribe([typeof(CashuTokenStateUpdated), typeof(PayoutEvent)]);
+        // Subscribe to Cashu token state change events (for pull payment claims tracking)
+        // No longer subscribe to approval events - token generation happens at creation time
+        subscribe([typeof(CashuTokenStateUpdated)]);
     }
 
     public async Task BackgroundCheck(object o)
@@ -224,14 +249,8 @@ public class CashuPayoutHandler : IPayoutHandler
                 }
             }
         }
-        else if (o is PayoutEvent payoutEvent && 
-                 payoutEvent.Type == PayoutEvent.PayoutEventType.Approved &&
-                 payoutEvent.Payout.PayoutMethodId == PayoutMethodId.ToString() &&
-                 payoutEvent.Payout.State == PayoutState.AwaitingPayment)
-        {
-            // Generate Cashu token when payout is approved
-            await GenerateCashuTokenForPayout(payoutEvent.Payout);
-        }
+        // Token generation now happens at creation time (TrackClaim), not on approval
+        // Removed approval event handler
     }
 
     public Task<decimal> GetMinimumPayoutAmount(IClaimDestination claimDestination)
@@ -330,7 +349,164 @@ public class CashuPayoutHandler : IPayoutHandler
     }
     
     /// <summary>
+    /// Generates a Cashu token for a payout at creation time (called from TrackClaim)
+    /// Throws exception if insufficient balance to fail payout creation
+    /// </summary>
+    private async Task GenerateCashuTokenForPayoutAtCreation(PayoutData payout, ClaimRequest claimRequest)
+    {
+        try
+        {
+            // Load store data if not already loaded
+            await using var ctx = _dbContextFactory.CreateContext();
+            var storeData = payout.StoreData;
+            if (storeData == null)
+            {
+                storeData = await ctx.Stores.FindAsync(payout.StoreDataId);
+                if (storeData == null)
+                {
+                    throw new InvalidOperationException($"Store {payout.StoreDataId} not found for payout {payout.Id}");
+                }
+            }
+
+            var config = storeData.GetPaymentMethodConfig<CashuPaymentMethodConfig>(
+                CashuPlugin.CashuPmid, _paymentHandlers);
+            
+            if (config == null || config.TrustedMintsUrls == null || config.TrustedMintsUrls.Count == 0)
+            {
+                throw new InvalidOperationException($"Cashu not configured for store {payout.StoreDataId}");
+            }
+
+            // Use the first trusted mint
+            var mintUrl = config.TrustedMintsUrls.First();
+            var wallet = new CashuWallet(mintUrl, "sat", _cashuDbContextFactory);
+
+            await using var cashuCtx = _cashuDbContextFactory.CreateContext();
+            
+            // At creation time, use OriginalAmount (Amount is set during approval)
+            var amountSatoshis = (ulong)Money.Coins(payout.OriginalAmount).Satoshi;
+
+            // Get stored proofs from the store's Cashu wallet
+            var storedProofs = await cashuCtx.Proofs
+                .Where(p => p.StoreId == payout.StoreDataId)
+                .Where(p => !cashuCtx.FailedTransactions.Any(ft => ft.UsedProofs.Contains(p)))
+                .OrderByDescending(p => p.Amount)
+                .ToListAsync();
+
+            // Check balance - THROW EXCEPTION if insufficient (fail payout creation)
+            ulong availableAmount = 0;
+            foreach (var proof in storedProofs)
+            {
+                availableAmount += (ulong)proof.Amount;
+            }
+            
+            if (availableAmount < amountSatoshis)
+            {
+                throw new InvalidOperationException(
+                    $"Insufficient Cashu balance for payout. Available: {availableAmount} sats, Required: {amountSatoshis} sats");
+            }
+
+            // Select proofs to use for the swap
+            var proofsToUse = new List<Proof>();
+            var storedProofsToUse = new List<StoredProof>();
+            ulong selectedAmount = 0;
+            
+            foreach (var storedProof in storedProofs)
+            {
+                if (selectedAmount >= amountSatoshis)
+                    break;
+
+                proofsToUse.Add(storedProof.ToDotNutProof());
+                storedProofsToUse.Add(storedProof);
+                selectedAmount += (ulong)storedProof.Amount;
+            }
+
+            // Get keyset and split amount
+            var keysets = await wallet.GetKeysets();
+            var activeKeyset = await wallet.GetActiveKeyset();
+            var keys = await wallet.GetKeys(activeKeyset.Id);
+
+            if (keys == null)
+            {
+                throw new InvalidOperationException($"Could not get keys for keyset {activeKeyset.Id}");
+            }
+
+            var outputAmounts = CashuUtils.SplitToProofsAmounts(amountSatoshis, keys);
+
+            // Perform swap to create new proofs
+            var swapResult = await wallet.Swap(proofsToUse, outputAmounts, activeKeyset.Id, keys);
+
+            if (!swapResult.Success || swapResult.ResultProofs == null)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to swap Cashu proofs: {swapResult.Error?.Message ?? "Unknown error"}");
+            }
+
+            // Create ecash token from the new proofs (only the proofs for the payout amount, not change)
+            var payoutProofs = swapResult.ResultProofs.Take(outputAmounts.Count).ToList();
+            var createdToken = new CashuToken()
+            {
+                Tokens =
+                [
+                    new CashuToken.Token
+                    {
+                        Mint = mintUrl,
+                        Proofs = payoutProofs,
+                    }
+                ],
+                Memo = $"Cashu payout {payout.Id}",
+                Unit = "sat"
+            };
+            var serializedToken = createdToken.Encode();
+
+            // Remove used proofs from database
+            var proofIdsToRemove = storedProofsToUse.Select(p => p.ProofId).ToList();
+            var proofsToRemove = await cashuCtx.Proofs
+                .Where(p => proofIdsToRemove.Contains(p.ProofId))
+                .ToListAsync();
+            
+            cashuCtx.Proofs.RemoveRange(proofsToRemove);
+
+            // Store new proofs (change if any) in database
+            if (swapResult.ResultProofs.Length > outputAmounts.Count)
+            {
+                // There's change - store it
+                var changeProofs = swapResult.ResultProofs.Skip(outputAmounts.Count).ToList();
+                var storedChangeProofs = changeProofs.Select(p => 
+                    new StoredProof(p, payout.StoreDataId));
+                await cashuCtx.Proofs.AddRangeAsync(storedChangeProofs);
+            }
+
+            await cashuCtx.SaveChangesAsync();
+
+            // Store the token as proof in payout immediately
+            var proofBlob = new CashuPayoutBlob
+            {
+                Token = serializedToken,
+                Mint = mintUrl,
+                Amount = amountSatoshis,
+                StoreId = payout.StoreDataId,
+                PayoutId = payout.Id,
+                DetectedInBackground = false
+            };
+            
+            SetProofBlob(payout, proofBlob);
+            
+            _logger.LogInformation(
+                "Successfully generated Cashu token for payout {PayoutId} with amount {Amount} sats at creation time",
+                payout.Id,
+                amountSatoshis);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating Cashu token for payout {PayoutId} at creation time", payout.Id);
+            // Re-throw to fail payout creation
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Generates a Cashu token for a pull payment payout by swapping existing proofs
+    /// This method is kept for backward compatibility but should no longer be used
     /// </summary>
     private async Task GenerateCashuTokenForPayout(PayoutData payout)
     {
@@ -553,6 +729,17 @@ public class CashuGenericClaimDestination : IClaimDestination
     public CashuGenericClaimDestination(string identifier)
     {
         Id = identifier;
+    }
+
+    public string? Id { get; }
+    public decimal? Amount { get; set; }
+}
+
+public class CashuQRCodeClaimDestination : IClaimDestination
+{
+    public CashuQRCodeClaimDestination()
+    {
+        Id = "QR Code Claim";
     }
 
     public string? Id { get; }

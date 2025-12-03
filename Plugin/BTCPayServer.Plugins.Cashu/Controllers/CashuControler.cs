@@ -491,17 +491,16 @@ public class CashuController: Controller
             return RedirectToAction("CashuWallet", new { storeId = StoreData.Id });
         }
 
-        var model = new ViewModels.PullPaymentClaimViewModel()
+        var model = new ViewModels.ExportedTokenViewModel()
         {
             Token = proof.Token,
             Amount = proof.Amount,
             Unit = "sat",
-            MintAddress = proof.Mint,
-            PayoutId = payout.Id,
-            StoreId = StoreData.Id
+            MintAddress = proof.Mint
         };
         
-        return View(model);
+        // Reuse ExportedToken view for QR code display
+        return View("ExportedToken", model);
     }
 
     /// <summary>
