@@ -65,6 +65,15 @@ fi
 
 echo "Verified DLL exists: $DLL_PATH"
 
+# Clean up unnecessary files to reduce plugin size
+echo ""
+echo "=== Cleaning up publish directory ==="
+rm -rf "$PUBLISH_DIR/refs" 2>/dev/null || true
+find "$PUBLISH_DIR" -name "*.pdb" -type f -delete 2>/dev/null || true
+find "$PUBLISH_DIR" -name "*.deps.json" -type f -delete 2>/dev/null || true
+find "$PUBLISH_DIR" -name "*.staticwebassets.endpoints.json" -type f -delete 2>/dev/null || true
+echo "Cleanup complete"
+
 # Package the plugin using PluginPacker
 echo ""
 echo "=== Packaging Plugin ==="

@@ -10,8 +10,8 @@ extract_assembly_name() {
         exit 1
     fi
     
-    # Try to extract AssemblyName from the .csproj file
-    local assembly_name=$(grep -oP '<AssemblyName>([^<]+)</AssemblyName>' "$csproj_file" | sed 's/<AssemblyName>\(.*\)<\/AssemblyName>/\1/' | head -n1 | xargs)
+    # Try to extract AssemblyName from the .csproj file (macOS-compatible grep)
+    local assembly_name=$(grep -E '<AssemblyName>([^<]+)</AssemblyName>' "$csproj_file" | sed -E 's/.*<AssemblyName>([^<]+)<\/AssemblyName>.*/\1/' | head -n1 | xargs)
     
     # If AssemblyName not found, fall back to project name (filename without extension)
     if [ -z "$assembly_name" ]; then
@@ -48,6 +48,14 @@ if [ ! -f "$DLL_PATH" ]; then
     ls -la "$PUBLISH_DIR" >&2
     exit 1
 fi
+
+# Clean up unnecessary files to reduce plugin size
+echo "Cleaning up publish directory..."
+rm -rf "$PUBLISH_DIR/refs" 2>/dev/null || true
+find "$PUBLISH_DIR" -name "*.pdb" -type f -delete 2>/dev/null || true
+find "$PUBLISH_DIR" -name "*.deps.json" -type f -delete 2>/dev/null || true
+find "$PUBLISH_DIR" -name "*.staticwebassets.endpoints.json" -type f -delete 2>/dev/null || true
+echo "Cleanup complete"
 
 # Package the plugin using PluginPacker
 OUTPUT_DIR="/tmp/publish-package"

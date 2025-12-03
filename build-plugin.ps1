@@ -59,6 +59,14 @@ if (-not (Test-Path $DLL_PATH)) {
     exit 1
 }
 
+# Clean up unnecessary files to reduce plugin size
+Write-Host "Cleaning up publish directory..."
+Remove-Item -Path (Join-Path $PUBLISH_DIR "refs") -Recurse -Force -ErrorAction SilentlyContinue
+Get-ChildItem -Path $PUBLISH_DIR -Filter "*.pdb" -Recurse | Remove-Item -Force -ErrorAction SilentlyContinue
+Get-ChildItem -Path $PUBLISH_DIR -Filter "*.deps.json" -Recurse | Remove-Item -Force -ErrorAction SilentlyContinue
+Get-ChildItem -Path $PUBLISH_DIR -Filter "*.staticwebassets.endpoints.json" -Recurse | Remove-Item -Force -ErrorAction SilentlyContinue
+Write-Host "Cleanup complete"
+
 # Package the plugin using PluginPacker
 $OUTPUT_DIR = "/tmp/publish-package"
 
