@@ -11,10 +11,10 @@ This document explains how to build and package the BTCNutServer (Cashu) plugin 
 
 **Output Location:**
 ```
-dist/BTCPayServer.Plugins.Cashu/[VERSION]/BTCPayServer.Plugins.Cashu.btcpay
+dist/btcnutserver-test/[VERSION]/btcnutserver-test.btcpay
 ```
 
-**Plugin Name:** `BTCPayServer.Plugins.Cashu` (always consistent)
+**Plugin Identifier:** `btcnutserver-test` (matches AssemblyName in .csproj)
 
 ## Prerequisites
 
@@ -41,10 +41,12 @@ The easiest way to build the plugin is using the provided build script:
 
 The build script will create a `.btcpay` file in a consistent location:
 
-**Output Location:** `dist/BTCPayServer.Plugins.Cashu/[VERSION]/BTCPayServer.Plugins.Cashu.btcpay`
+**Output Location:** `dist/btcnutserver-test/[VERSION]/btcnutserver-test.btcpay`
 
 For example:
-- `dist/BTCPayServer.Plugins.Cashu/0.0.1.0/BTCPayServer.Plugins.Cashu.btcpay`
+- `dist/btcnutserver-test/0.0.1.0/btcnutserver-test.btcpay`
+
+**Expected Size:** ~11-12 MB (production build with all dependencies included)
 
 ## Build Script Options
 
@@ -57,6 +59,19 @@ The build script accepts the following parameters:
 # Specify custom output directory (default is "dist")
 .\build-plugin.ps1 -OutputDir "my-output"
 ```
+
+## Build Process
+
+The build script performs the following steps:
+
+1. **Initialize Submodules** - Ensures BTCPay Server submodules are available
+2. **Restore Dependencies** - Downloads all NuGet packages
+3. **Build PluginPacker** - Builds the tool used to package the plugin
+4. **Build Plugin** - Compiles the plugin project
+5. **Publish Plugin** - Creates a production build with all dependencies (CRITICAL for production)
+6. **Package Plugin** - Creates the `.btcpay` file using PluginPacker
+
+**Important:** The script uses `dotnet publish` to create a production build with all dependencies included. This ensures the plugin package is complete and ready for deployment.
 
 ## Manual Build Steps
 
@@ -86,44 +101,86 @@ dotnet build submodules\btcpayserver\BTCPayServer.PluginPacker\BTCPayServer.Plug
 dotnet build Plugin\BTCPayServer.Plugins.Cashu\BTCPayServer.Plugins.Cashu.csproj --configuration Release
 ```
 
-### 5. Package the Plugin
+### 5. Publish the Plugin (PRODUCTION BUILD)
 
 ```powershell
-dotnet run --project submodules\btcpayserver\BTCPayServer.PluginPacker\BTCPayServer.PluginPacker.csproj --configuration Release -- `
-    "Plugin\BTCPayServer.Plugins.Cashu\bin\Release\net8.0" `
-    "BTCPayServer.Plugins.Cashu" `
+dotnet publish Plugin\BTCPayServer.Plugins.Cashu\BTCPayServer.Plugins.Cashu.csproj --configuration Release --output "Plugin\BTCPayServer.Plugins.Cashu\bin\Release\net8.0\publish"
+```
+
+This step is **critical** - it creates a production build with all dependencies included. The publish directory will contain:
+- Plugin DLL and all dependencies
+- Embedded resources (views, assets, etc.)
+- Runtime configuration files
+
+### 6. Clean Up Publish Directory (Optional)
+
+Remove unnecessary files to reduce plugin size:
+
+```powershell
+$publishDir = "Plugin\BTCPayServer.Plugins.Cashu\bin\Release\net8.0\publish"
+Remove-Item "$publishDir\*.pdb" -Force -ErrorAction SilentlyContinue
+Remove-Item "$publishDir\*.deps.json" -Force -ErrorAction SilentlyContinue
+Remove-Item "$publishDir\refs" -Recurse -Force -ErrorAction SilentlyContinue
+```
+
+### 7. Package the Plugin
+
+```powershell
+dotnet run --project submodules\btcpayserver\BTCPayServer.PluginPacker\BTCPayServer.PluginPacker.csproj --configuration Release --no-build -- `
+    "Plugin\BTCPayServer.Plugins.Cashu\bin\Release\net8.0\publish" `
+    "btcnutserver-test" `
     "dist"
 ```
+
+**Note:** The plugin identifier (`btcnutserver-test`) must match the `AssemblyName` in the `.csproj` file.
 
 ## Build Configuration
 
 ### Plugin Information
 
-- **Plugin Name:** `BTCPayServer.Plugins.Cashu`
-- **Plugin DLL:** `BTCPayServer.Plugins.Cashu.dll`
-- **Current Version:** `0.0.1.0` (defined in `.csproj` file)
+- **Plugin Identifier:** `btcnutserver-test` (defined as `AssemblyName` in `.csproj`)
+- **Plugin Name:** `BTCNutServer` (display name)
+- **Plugin DLL:** `btcnutserver-test.dll`
+- **Current Version:** `0.0.1` (defined in `.csproj` file, becomes `0.0.1.0` in package)
 - **Target Framework:** `.NET 8.0`
 
 ### Build Output Structure
 
 ```
 dist/
-└── BTCPayServer.Plugins.Cashu/
+└── btcnutserver-test/
     └── 0.0.1.0/
-        ├── BTCPayServer.Plugins.Cashu.btcpay      (Plugin package)
-        ├── BTCPayServer.Plugins.Cashu.btcpay.json (Plugin metadata)
-        ├── SHA256SUMS                             (Checksums)
-        └── SHA256SUMS.asc                         (GPG-signed checksums)
+        ├── btcnutserver-test.btcpay      (Plugin package, ~11-12 MB)
+        ├── btcnutserver-test.btcpay.json (Plugin metadata)
+        ├── SHA256SUMS                     (Checksums)
+        └── SHA256SUMS.asc                 (GPG-signed checksums)
 ```
+
+## Production Build vs Development Build
+
+### Production Build (Recommended)
+- Uses `dotnet publish` to include all dependencies
+- Package size: ~11-12 MB
+- All required DLLs and dependencies included
+- Ready for deployment to production servers
+
+### Development Build
+- Uses `dotnet build` only
+- Package size: ~1-2 MB
+- Dependencies expected to be available on server
+- May fail if dependencies are missing
+
+**Always use the production build script for server deployment.**
 
 ## Consistent Build Output
 
 The build script ensures:
 
-1. **Consistent Plugin Name:** Always uses `BTCPayServer.Plugins.Cashu`
-2. **Consistent Location:** Always outputs to `dist/BTCPayServer.Plugins.Cashu/[VERSION]/`
-3. **Consistent Naming:** The `.btcpay` file is always named `BTCPayServer.Plugins.Cashu.btcpay`
-4. **Clean Builds:** Previous builds in the output directory are automatically cleaned
+1. **Consistent Plugin Identifier:** Always uses `btcnutserver-test` (matches AssemblyName)
+2. **Consistent Location:** Always outputs to `dist/btcnutserver-test/[VERSION]/`
+3. **Consistent Naming:** The `.btcpay` file is always named `btcnutserver-test.btcpay`
+4. **Production Ready:** Uses `dotnet publish` to include all dependencies
+5. **Clean Builds:** Previous builds in the output directory are automatically cleaned
 
 ## Troubleshooting
 
@@ -154,16 +211,25 @@ git submodule update --init --recursive
 
 3. **Verify plugin DLL exists:**
    ```powershell
-   Test-Path "Plugin\BTCPayServer.Plugins.Cashu\bin\Release\net8.0\BTCPayServer.Plugins.Cashu.dll"
+   Test-Path "Plugin\BTCPayServer.Plugins.Cashu\bin\Release\net8.0\publish\btcnutserver-test.dll"
    ```
+
+### Plugin Size Issues
+
+If the plugin package is smaller than expected (~1-2 MB instead of ~11-12 MB):
+
+- **Problem:** Build script is using `dotnet build` instead of `dotnet publish`
+- **Solution:** Ensure the build script includes the publish step (Step 5 in the script)
+- **Check:** Verify the publish directory exists and contains all dependencies
 
 ### PluginPacker Errors
 
 If PluginPacker fails:
 
-1. Ensure the plugin DLL was built successfully
-2. Check that the plugin name matches exactly: `BTCPayServer.Plugins.Cashu`
-3. Verify the build output directory contains all required dependencies
+1. Ensure the plugin DLL was built and published successfully
+2. Check that the plugin identifier matches exactly: `btcnutserver-test`
+3. Verify the publish output directory contains all required dependencies
+4. The plugin identifier must match the `AssemblyName` in the `.csproj` file
 
 ## Installing the Plugin
 
@@ -172,11 +238,11 @@ Once built, you can install the plugin in BTCPay Server:
 1. **Via UI:**
    - Go to Server Settings > Plugins
    - Click "Upload Plugin"
-   - Select the `.btcpay` file from `dist/BTCPayServer.Plugins.Cashu/[VERSION]/`
+   - Select the `.btcpay` file from `dist/btcnutserver-test/[VERSION]/`
 
 2. **Via Command Line:**
    ```bash
-   btcpay-update.sh /path/to/BTCPayServer.Plugins.Cashu.btcpay
+   btcpay-update.sh /path/to/btcnutserver-test.btcpay
    ```
 
 ## Version Management
@@ -186,7 +252,7 @@ To update the plugin version:
 1. Edit `Plugin/BTCPayServer.Plugins.Cashu/BTCPayServer.Plugins.Cashu.csproj`
 2. Update the `<Version>` property:
    ```xml
-   <Version>0.0.2.0</Version>
+   <Version>0.0.2</Version>
    ```
 3. Rebuild the plugin - the new version will be in a new subdirectory
 
@@ -207,8 +273,10 @@ The build script is designed to work in CI/CD environments:
 
 - The build script automatically cleans previous builds in the output directory
 - The plugin is always built in Release configuration by default for production use
+- **Production builds use `dotnet publish` to include all dependencies** - this is essential for deployment
 - Debug builds can be created but are not recommended for distribution
 - The `.btcpay` file is a ZIP archive containing the plugin DLL and all dependencies
+- Expected production package size: ~11-12 MB
 
 ## Support
 
@@ -216,4 +284,3 @@ For issues or questions:
 - Check the [main README](README.md)
 - Review the [Feature Implementation Plan](FEATURE_IMPLEMENTATION_PLAN.md)
 - Open an issue on the repository
-

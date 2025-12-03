@@ -18,6 +18,16 @@ public class CashuPayoutBlob : IPayoutProof
     public ulong Amount { get; set; }
     
     /// <summary>
+    /// Store ID for generating QR code link for pull payments
+    /// </summary>
+    public string? StoreId { get; set; }
+    
+    /// <summary>
+    /// Payout ID for generating QR code link for pull payments
+    /// </summary>
+    public string? PayoutId { get; set; }
+    
+    /// <summary>
     /// Indicates whether this proof was detected in the background (e.g., via mint state monitoring)
     /// </summary>
     public bool DetectedInBackground { get; set; } = false;
@@ -36,6 +46,18 @@ public class CashuPayoutBlob : IPayoutProof
     public string Id => Token; // Use token as ID (first part of token string)
     
     [JsonIgnore]
-    public string? Link => !string.IsNullOrEmpty(Mint) ? $"{Mint}/proofs/{Token}" : null; // Link to mint proof if available
+    public string? Link
+    {
+        get
+        {
+            // For pull payments, link to QR code view if we have store and payout IDs
+            if (!string.IsNullOrEmpty(StoreId) && !string.IsNullOrEmpty(PayoutId) && !DetectedInBackground)
+            {
+                return $"/stores/{StoreId}/cashu/pull-payment-claim/{PayoutId}";
+            }
+            // Otherwise, link to mint proof if available
+            return !string.IsNullOrEmpty(Mint) ? $"{Mint}/proofs/{Token}" : null;
+        }
+    }
 }
 

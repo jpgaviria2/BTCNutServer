@@ -18,10 +18,12 @@ using BTCPayServer.PayoutProcessors;
 using BTCPayServer.HostedServices;
 using BTCPayServer.Abstractions.Models;
 using BTCPayServer.Payouts;
+using BTCPayServer.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using BTCPayServer.Plugins.Cashu.Data.Models;
+using BTCPayServer.Plugins.Cashu.Payouts.Cashu;
 using DotNut;
 using DotNut.ApiModels;
 using Microsoft.AspNetCore.Cors;
@@ -30,6 +32,7 @@ using Newtonsoft.Json.Linq;
 using InvoiceStatus = BTCPayServer.Client.Models.InvoiceStatus;
 using PubKey = DotNut.PubKey;
 using StoreData = BTCPayServer.Data.StoreData;
+using PayoutData = BTCPayServer.Data.PayoutData;
 
 namespace BTCPayServer.Plugins.Cashu.Controllers;
 
@@ -45,7 +48,10 @@ public class CashuController: Controller
         CashuDbContextFactory cashuDbContextFactory,
         Payouts.Cashu.CashuAutomatedPayoutSenderFactory payoutSenderFactory,
         PayoutProcessorService payoutProcessorService,
-        EventAggregator eventAggregator)
+        EventAggregator eventAggregator,
+        ApplicationDbContextFactory applicationDbContextFactory,
+        PayoutMethodHandlerDictionary payoutHandlers,
+        BTCPayNetworkJsonSerializerSettings jsonSerializerSettings)
     {
         _invoiceRepository = invoiceRepository;
         _storeRepository = storeRepository;
@@ -56,6 +62,9 @@ public class CashuController: Controller
         _payoutSenderFactory = payoutSenderFactory;
         _payoutProcessorService = payoutProcessorService;
         _eventAggregator = eventAggregator;
+        _applicationDbContextFactory = applicationDbContextFactory;
+        _payoutHandlers = payoutHandlers;
+        _jsonSerializerSettings = jsonSerializerSettings;
     }
     private StoreData StoreData => HttpContext.GetStoreData();
     
@@ -68,6 +77,9 @@ public class CashuController: Controller
     private readonly Payouts.Cashu.CashuAutomatedPayoutSenderFactory _payoutSenderFactory;
     private readonly PayoutProcessorService _payoutProcessorService;
     private readonly EventAggregator _eventAggregator;
+    private readonly ApplicationDbContextFactory _applicationDbContextFactory;
+    private readonly PayoutMethodHandlerDictionary _payoutHandlers;
+    private readonly BTCPayNetworkJsonSerializerSettings _jsonSerializerSettings;
 
     
     /// <summary>
@@ -425,6 +437,68 @@ public class CashuController: Controller
             Unit = exportedToken.Unit,
             MintAddress = exportedToken.Mint,
             Token = exportedToken.SerializedToken,
+        };
+        
+        return View(model);
+    }
+
+    /// <summary>
+    /// Display pull payment claim QR code for a Cashu payout
+    /// </summary>
+    /// <param name="payoutId">Payout ID</param>
+    [HttpGet("pull-payment-claim/{payoutId}")]
+    public async Task<IActionResult> PullPaymentClaim(string payoutId)
+    {
+        if (string.IsNullOrEmpty(payoutId))
+        {
+            TempData[WellKnownTempData.ErrorMessage] = "Payout ID is required";
+            return RedirectToAction("CashuWallet", new { storeId = StoreData.Id });
+        }
+
+        await using var ctx = _applicationDbContextFactory.CreateContext();
+        
+        // Get the payout
+        var payout = await ctx.Payouts.GetPayout(payoutId, StoreData.Id, includePullPayment: true, includeStore: true);
+        
+        if (payout == null)
+        {
+            TempData[WellKnownTempData.ErrorMessage] = "Payout not found";
+            return RedirectToAction("CashuWallet", new { storeId = StoreData.Id });
+        }
+
+        // Verify it's a Cashu payout
+        if (!PayoutMethodId.TryParse(payout.PayoutMethodId, out var payoutMethodId) ||
+            payoutMethodId.ToString() != CashuPlugin.CashuPmid.ToString())
+        {
+            TempData[WellKnownTempData.ErrorMessage] = "This payout is not a Cashu payout";
+            return RedirectToAction("CashuWallet", new { storeId = StoreData.Id });
+        }
+
+        // Get the payout handler to parse the proof
+        var payoutHandler = _payoutHandlers.TryGet(payoutMethodId);
+        if (payoutHandler is not CashuPayoutHandler cashuPayoutHandler)
+        {
+            TempData[WellKnownTempData.ErrorMessage] = "Cashu payout handler not found";
+            return RedirectToAction("CashuWallet", new { storeId = StoreData.Id });
+        }
+
+        // Parse the proof to get the token
+        var proof = cashuPayoutHandler.ParseProof(payout) as CashuPayoutBlob;
+        
+        if (proof == null || string.IsNullOrEmpty(proof.Token))
+        {
+            TempData[WellKnownTempData.ErrorMessage] = "Token not yet generated for this payout. Please wait a moment and try again.";
+            return RedirectToAction("CashuWallet", new { storeId = StoreData.Id });
+        }
+
+        var model = new ViewModels.PullPaymentClaimViewModel()
+        {
+            Token = proof.Token,
+            Amount = proof.Amount,
+            Unit = "sat",
+            MintAddress = proof.Mint,
+            PayoutId = payout.Id,
+            StoreId = StoreData.Id
         };
         
         return View(model);

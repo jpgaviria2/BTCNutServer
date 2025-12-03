@@ -13,6 +13,8 @@ using BTCPayServer.HostedServices;
 using BTCPayServer.Payments;
 using BTCPayServer.Payouts;
 using BTCPayServer.Plugins.Cashu.CashuAbstractions;
+using BTCPayServer.Plugins.Cashu.Data;
+using BTCPayServer.Plugins.Cashu.Data.Models;
 using BTCPayServer.Plugins.Cashu.PaymentHandlers;
 using BTCPayServer.Plugins.Cashu.Payouts.Cashu.Events;
 using BTCPayServer.Services;
@@ -25,6 +27,7 @@ using Microsoft.Extensions.Logging;
 using NBitcoin;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using DotNut;
 using PayoutData = BTCPayServer.Data.PayoutData;
 using StoreData = BTCPayServer.Data.StoreData;
 
@@ -40,6 +43,7 @@ public class CashuPayoutHandler : IPayoutHandler
     private readonly PaymentMethodHandlerDictionary _paymentHandlers;
     private readonly BTCPayNetworkJsonSerializerSettings _jsonSerializerSettings;
     private readonly ApplicationDbContextFactory _dbContextFactory;
+    private readonly CashuDbContextFactory _cashuDbContextFactory;
     private readonly EventAggregator _eventAggregator;
     private readonly NotificationSender _notificationSender;
     private readonly ILogger<CashuPayoutHandler> _logger;
@@ -50,6 +54,7 @@ public class CashuPayoutHandler : IPayoutHandler
         PaymentMethodHandlerDictionary paymentHandlers,
         BTCPayNetworkJsonSerializerSettings jsonSerializerSettings,
         ApplicationDbContextFactory dbContextFactory,
+        CashuDbContextFactory cashuDbContextFactory,
         EventAggregator eventAggregator,
         NotificationSender notificationSender,
         ILogger<CashuPayoutHandler> logger)
@@ -57,6 +62,7 @@ public class CashuPayoutHandler : IPayoutHandler
         _paymentHandlers = paymentHandlers;
         _jsonSerializerSettings = jsonSerializerSettings;
         _dbContextFactory = dbContextFactory;
+        _cashuDbContextFactory = cashuDbContextFactory;
         _eventAggregator = eventAggregator;
         _notificationSender = notificationSender;
         _logger = logger;
@@ -148,8 +154,8 @@ public class CashuPayoutHandler : IPayoutHandler
 
     public void StartBackgroundCheck(Action<Type[]> subscribe)
     {
-        // Subscribe to Cashu token state change events
-        subscribe([typeof(CashuTokenStateUpdated)]);
+        // Subscribe to Cashu token state change events and payout approval events
+        subscribe([typeof(CashuTokenStateUpdated), typeof(PayoutEvent)]);
     }
 
     public async Task BackgroundCheck(object o)
@@ -217,6 +223,14 @@ public class CashuPayoutHandler : IPayoutHandler
                     }
                 }
             }
+        }
+        else if (o is PayoutEvent payoutEvent && 
+                 payoutEvent.Type == PayoutEvent.PayoutEventType.Approved &&
+                 payoutEvent.Payout.PayoutMethodId == PayoutMethodId.ToString() &&
+                 payoutEvent.Payout.State == PayoutState.AwaitingPayment)
+        {
+            // Generate Cashu token when payout is approved
+            await GenerateCashuTokenForPayout(payoutEvent.Payout);
         }
     }
 
@@ -313,6 +327,185 @@ public class CashuPayoutHandler : IPayoutHandler
         // For Cashu, manual payment initiation would trigger the automated payout processor
         // Return null to use default behavior (automated processor handles it)
         return Task.FromResult<IActionResult>(null!);
+    }
+    
+    /// <summary>
+    /// Generates a Cashu token for a pull payment payout by swapping existing proofs
+    /// </summary>
+    private async Task GenerateCashuTokenForPayout(PayoutData payout)
+    {
+        if (PayoutLocker.LockOrNullAsync(payout.Id, 0) is var locker && await locker is { } disposable)
+        {
+            using (disposable)
+            {
+                try
+                {
+                    await using var ctx = _dbContextFactory.CreateContext();
+                    // Reload payout to ensure we have the latest state
+                    var reloadedPayout = await ctx.Payouts
+                        .Include(p => p.StoreData)
+                        .FirstOrDefaultAsync(p => p.Id == payout.Id);
+                    
+                    if (reloadedPayout == null || reloadedPayout.State != PayoutState.AwaitingPayment)
+                    {
+                        _logger.LogWarning("Payout {PayoutId} is not in AwaitingPayment state, skipping token generation", payout.Id);
+                        return;
+                    }
+
+                    // Check if token already generated
+                    var existingProof = ParseProof(reloadedPayout);
+                    if (existingProof is CashuPayoutBlob existingBlob && !string.IsNullOrEmpty(existingBlob.Token))
+                    {
+                        _logger.LogInformation("Payout {PayoutId} already has a token generated", payout.Id);
+                        return;
+                    }
+
+                    // Get store configuration
+                    var storeData = reloadedPayout.StoreData;
+                    var config = storeData?.GetPaymentMethodConfig<CashuPaymentMethodConfig>(
+                        CashuPlugin.CashuPmid, _paymentHandlers);
+                    
+                    if (config == null || config.TrustedMintsUrls == null || config.TrustedMintsUrls.Count == 0)
+                    {
+                        _logger.LogWarning("Cashu not configured for store {StoreId}, cannot generate token for payout {PayoutId}", 
+                            reloadedPayout.StoreDataId, payout.Id);
+                        return;
+                    }
+
+                    // Use the first trusted mint
+                    var mintUrl = config.TrustedMintsUrls.First();
+                    var wallet = new CashuWallet(mintUrl, "sat", _cashuDbContextFactory);
+
+                    await using var cashuCtx = _cashuDbContextFactory.CreateContext();
+                    var amountSatoshis = (ulong)Money.Coins(reloadedPayout.Amount.Value).Satoshi;
+
+                    // Get stored proofs from the store's Cashu wallet
+                    var storedProofs = await cashuCtx.Proofs
+                        .Where(p => p.StoreId == reloadedPayout.StoreDataId)
+                        .Where(p => !cashuCtx.FailedTransactions.Any(ft => ft.UsedProofs.Contains(p)))
+                        .OrderByDescending(p => p.Amount)
+                        .ToListAsync();
+
+                    // Check balance
+                    ulong availableAmount = 0;
+                    foreach (var proof in storedProofs)
+                    {
+                        availableAmount += (ulong)proof.Amount;
+                    }
+                    
+                    if (availableAmount < amountSatoshis)
+                    {
+                        _logger.LogWarning(
+                            "Insufficient Cashu proofs for payout {PayoutId}. Available: {Available}, Required: {Required}",
+                            reloadedPayout.Id,
+                            availableAmount,
+                            amountSatoshis);
+                        return;
+                    }
+
+                    // Select proofs to use for the swap
+                    var proofsToUse = new List<Proof>();
+                    var storedProofsToUse = new List<StoredProof>();
+                    ulong selectedAmount = 0;
+                    
+                    foreach (var storedProof in storedProofs)
+                    {
+                        if (selectedAmount >= amountSatoshis)
+                            break;
+
+                        proofsToUse.Add(storedProof.ToDotNutProof());
+                        storedProofsToUse.Add(storedProof);
+                        selectedAmount += (ulong)storedProof.Amount;
+                    }
+
+                    // Get keyset and split amount
+                    var keysets = await wallet.GetKeysets();
+                    var activeKeyset = await wallet.GetActiveKeyset();
+                    var keys = await wallet.GetKeys(activeKeyset.Id);
+
+                    if (keys == null)
+                    {
+                        _logger.LogError("Could not get keys for keyset {KeysetId} for payout {PayoutId}", 
+                            activeKeyset.Id, reloadedPayout.Id);
+                        return;
+                    }
+
+                    var outputAmounts = CashuUtils.SplitToProofsAmounts(amountSatoshis, keys);
+
+                    // Perform swap to create new proofs
+                    var swapResult = await wallet.Swap(proofsToUse, outputAmounts, activeKeyset.Id, keys);
+
+                    if (!swapResult.Success || swapResult.ResultProofs == null)
+                    {
+                        _logger.LogError(
+                            "Failed to swap Cashu proofs for payout {PayoutId}. Error: {Error}",
+                            reloadedPayout.Id,
+                            swapResult.Error?.Message ?? "Unknown error");
+                        return;
+                    }
+
+                    // Create ecash token from the new proofs (only the proofs for the payout amount, not change)
+                    var payoutProofs = swapResult.ResultProofs.Take(outputAmounts.Count).ToList();
+                    var createdToken = new CashuToken()
+                    {
+                        Tokens =
+                        [
+                            new CashuToken.Token
+                            {
+                                Mint = mintUrl,
+                                Proofs = payoutProofs,
+                            }
+                        ],
+                        Memo = $"Cashu pull payment payout {reloadedPayout.Id}",
+                        Unit = "sat"
+                    };
+                    var serializedToken = createdToken.Encode();
+
+                    // Remove used proofs from database
+                    var proofIdsToRemove = storedProofsToUse.Select(p => p.ProofId).ToList();
+                    var proofsToRemove = await cashuCtx.Proofs
+                        .Where(p => proofIdsToRemove.Contains(p.ProofId))
+                        .ToListAsync();
+                    
+                    cashuCtx.Proofs.RemoveRange(proofsToRemove);
+
+                    // Store new proofs (change if any) in database
+                    if (swapResult.ResultProofs.Length > outputAmounts.Count)
+                    {
+                        // There's change - store it
+                        var changeProofs = swapResult.ResultProofs.Skip(outputAmounts.Count).ToList();
+                        var storedChangeProofs = changeProofs.Select(p => 
+                            new StoredProof(p, reloadedPayout.StoreDataId));
+                        await cashuCtx.Proofs.AddRangeAsync(storedChangeProofs);
+                    }
+
+                    await cashuCtx.SaveChangesAsync();
+
+                    // Store the token as proof in payout
+                    var proofBlob = new CashuPayoutBlob
+                    {
+                        Token = serializedToken,
+                        Mint = mintUrl,
+                        Amount = amountSatoshis,
+                        StoreId = reloadedPayout.StoreDataId,
+                        PayoutId = reloadedPayout.Id,
+                        DetectedInBackground = false
+                    };
+                    
+                    SetProofBlob(reloadedPayout, proofBlob);
+                    await ctx.SaveChangesAsync();
+                    
+                    _logger.LogInformation(
+                        "Successfully generated Cashu token for payout {PayoutId} with amount {Amount} sats",
+                        reloadedPayout.Id,
+                        amountSatoshis);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error generating Cashu token for payout {PayoutId}", payout.Id);
+                }
+            }
+        }
     }
     
     /// <summary>
