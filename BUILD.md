@@ -22,6 +22,26 @@ dist/btcnutserver-test/[VERSION]/btcnutserver-test.btcpay
 - **Git** (for submodule management)
 - **PowerShell** (for Windows) or **Bash** (for Linux/macOS)
 
+### macOS Specific Requirements
+
+On macOS, you need both:
+1. **.NET 8.0 SDK** (for building) - typically installed at `/usr/local/share/dotnet`
+2. **.NET 8.0 Runtime** (for running PluginPacker) - typically installed at `~/.dotnet`
+
+**Important:** macOS may have .NET 10.0 SDK installed, but you need .NET 8.0 runtime for PluginPacker. Install it using:
+```bash
+curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime dotnet --version 8.0.0
+```
+
+Verify installations:
+```bash
+# Check SDK (for building)
+/usr/local/share/dotnet/dotnet --version
+
+# Check runtime (for running apps)
+~/.dotnet/dotnet --version
+```
+
 ## Quick Build
 
 The easiest way to build the plugin is using the provided build script:
@@ -31,10 +51,24 @@ The easiest way to build the plugin is using the provided build script:
 .\build-plugin.ps1
 ```
 
-### Linux/macOS (Bash)
+### macOS (Bash)
+
+**IMPORTANT:** On macOS, you must set environment variables to use the correct .NET installations:
+
 ```bash
-# Note: A bash version of the script can be created if needed
-# For now, you can follow the manual steps below
+# Set .NET environment for building (SDK)
+export DOTNET_ROOT=/usr/local/share/dotnet
+export PATH="/usr/local/share/dotnet:$PATH"
+
+# Build the plugin
+./build-plugin.sh
+```
+
+**Note:** The build script will automatically handle the runtime switching for PluginPacker.
+
+### Linux (Bash)
+```bash
+./build-plugin.sh
 ```
 
 ## Build Output
@@ -77,45 +111,100 @@ The build script performs the following steps:
 
 If you prefer to build manually, follow these steps:
 
+### macOS Manual Build (Step-by-Step)
+
+**Step 0: Set Up .NET Environment**
+
+```bash
+# For building (use SDK at /usr/local/share/dotnet)
+export DOTNET_ROOT=/usr/local/share/dotnet
+export PATH="/usr/local/share/dotnet:$PATH"
+```
+
 ### 1. Initialize Submodules
 
+**Windows:**
 ```powershell
+git submodule update --init --recursive
+```
+
+**macOS/Linux:**
+```bash
 git submodule update --init --recursive
 ```
 
 ### 2. Restore Dependencies
 
+**Windows:**
 ```powershell
+dotnet restore BTCNutServer.sln
+```
+
+**macOS/Linux:**
+```bash
+# Ensure DOTNET_ROOT is set (see Step 0)
+export DOTNET_ROOT=/usr/local/share/dotnet
+export PATH="/usr/local/share/dotnet:$PATH"
 dotnet restore BTCNutServer.sln
 ```
 
 ### 3. Build PluginPacker
 
+**Windows:**
 ```powershell
 dotnet build submodules\btcpayserver\BTCPayServer.PluginPacker\BTCPayServer.PluginPacker.csproj --configuration Release
 ```
 
+**macOS/Linux:**
+```bash
+# Use SDK for building
+export DOTNET_ROOT=/usr/local/share/dotnet
+export PATH="/usr/local/share/dotnet:$PATH"
+dotnet build submodules/btcpayserver/BTCPayServer.PluginPacker/BTCPayServer.PluginPacker.csproj --configuration Release
+```
+
 ### 4. Build the Plugin
 
+**Windows:**
 ```powershell
 dotnet build Plugin\BTCPayServer.Plugins.Cashu\BTCPayServer.Plugins.Cashu.csproj --configuration Release
 ```
 
-### 5. Publish the Plugin (PRODUCTION BUILD)
-
-```powershell
-dotnet publish Plugin\BTCPayServer.Plugins.Cashu\BTCPayServer.Plugins.Cashu.csproj --configuration Release --output "Plugin\BTCPayServer.Plugins.Cashu\bin\Release\net8.0\publish"
+**macOS/Linux:**
+```bash
+# Use SDK for building
+export DOTNET_ROOT=/usr/local/share/dotnet
+export PATH="/usr/local/share/dotnet:$PATH"
+dotnet build Plugin/BTCPayServer.Plugins.Cashu/BTCPayServer.Plugins.Cashu.csproj --configuration Release
 ```
+
+### 5. Publish the Plugin (PRODUCTION BUILD)
 
 This step is **critical** - it creates a production build with all dependencies included. The publish directory will contain:
 - Plugin DLL and all dependencies
 - Embedded resources (views, assets, etc.)
 - Runtime configuration files
 
+**Windows:**
+```powershell
+dotnet publish Plugin\BTCPayServer.Plugins.Cashu\BTCPayServer.Plugins.Cashu.csproj --configuration Release --output "Plugin\BTCPayServer.Plugins.Cashu\bin\Release\net8.0\publish"
+```
+
+**macOS/Linux:**
+```bash
+# Use SDK for publishing
+export DOTNET_ROOT=/usr/local/share/dotnet
+export PATH="/usr/local/share/dotnet:$PATH"
+rm -rf /tmp/publish
+mkdir -p /tmp/publish
+dotnet publish Plugin/BTCPayServer.Plugins.Cashu/BTCPayServer.Plugins.Cashu.csproj --configuration Release -o /tmp/publish --no-build
+```
+
 ### 6. Clean Up Publish Directory (Optional)
 
 Remove unnecessary files to reduce plugin size:
 
+**Windows:**
 ```powershell
 $publishDir = "Plugin\BTCPayServer.Plugins.Cashu\bin\Release\net8.0\publish"
 Remove-Item "$publishDir\*.pdb" -Force -ErrorAction SilentlyContinue
@@ -123,8 +212,14 @@ Remove-Item "$publishDir\*.deps.json" -Force -ErrorAction SilentlyContinue
 Remove-Item "$publishDir\refs" -Recurse -Force -ErrorAction SilentlyContinue
 ```
 
+**macOS/Linux:**
+```bash
+rm -rf /tmp/publish/refs /tmp/publish/*.pdb /tmp/publish/*.deps.json /tmp/publish/*.staticwebassets.endpoints.json 2>/dev/null
+```
+
 ### 7. Package the Plugin
 
+**Windows:**
 ```powershell
 dotnet run --project submodules\btcpayserver\BTCPayServer.PluginPacker\BTCPayServer.PluginPacker.csproj --configuration Release --no-build -- `
     "Plugin\BTCPayServer.Plugins.Cashu\bin\Release\net8.0\publish" `
@@ -132,7 +227,17 @@ dotnet run --project submodules\btcpayserver\BTCPayServer.PluginPacker\BTCPaySer
     "dist"
 ```
 
-**Note:** The plugin identifier (`btcnutserver-test`) must match the `AssemblyName` in the `.csproj` file.
+**macOS/Linux:**
+```bash
+# CRITICAL: Switch to .NET 8.0 runtime for running PluginPacker
+export DOTNET_ROOT=~/.dotnet
+export PATH="$DOTNET_ROOT:$PATH"
+dotnet exec submodules/btcpayserver/BTCPayServer.PluginPacker/bin/Release/net8.0/BTCPayServer.PluginPacker.dll /tmp/publish btcnutserver-test dist
+```
+
+**Note:** 
+- The plugin identifier (`btcnutserver-test`) must match the `AssemblyName` in the `.csproj` file.
+- On macOS, you **must** switch to `~/.dotnet` (runtime) for Step 7, as PluginPacker requires .NET 8.0 runtime, not just the SDK.
 
 ## Build Configuration
 
@@ -197,22 +302,104 @@ git submodule update --init --recursive
 ### Build Failures
 
 1. **Check .NET SDK version:**
+   
+   **Windows:**
    ```powershell
    dotnet --version
    ```
+   
+   **macOS:**
+   ```bash
+   /usr/local/share/dotnet/dotnet --version
+   ```
+   
    Should be 8.0 or later.
 
-2. **Clean and rebuild:**
+2. **Check .NET Runtime (macOS only):**
+   ```bash
+   ~/.dotnet/dotnet --version
+   ```
+   Should show 8.0.0 runtime. If not installed:
+   ```bash
+   curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime dotnet --version 8.0.0
+   ```
+
+3. **Clean and rebuild:**
+   
+   **Windows:**
    ```powershell
    dotnet clean BTCNutServer.sln
    dotnet restore BTCNutServer.sln
    .\build-plugin.ps1
    ```
+   
+   **macOS:**
+   ```bash
+   export DOTNET_ROOT=/usr/local/share/dotnet
+   export PATH="/usr/local/share/dotnet:$PATH"
+   dotnet clean BTCNutServer.sln
+   dotnet restore BTCNutServer.sln
+   ./build-plugin.sh
+   ```
 
-3. **Verify plugin DLL exists:**
+4. **Verify plugin DLL exists:**
+   
+   **Windows:**
    ```powershell
    Test-Path "Plugin\BTCPayServer.Plugins.Cashu\bin\Release\net8.0\publish\btcnutserver-test.dll"
    ```
+   
+   **macOS/Linux:**
+   ```bash
+   test -f /tmp/publish/btcnutserver-test.dll && echo "DLL exists" || echo "DLL not found"
+   ```
+
+### macOS-Specific Issues
+
+**Problem: "No .NET SDKs were found" or "Framework 'Microsoft.NETCore.App', version '8.0.0' not found"**
+
+**Solution:**
+1. Install .NET 8.0 SDK if missing:
+   ```bash
+   # Download and install .NET 8.0 SDK from https://dotnet.microsoft.com/download/dotnet/8.0
+   # Or use Homebrew: brew install --cask dotnet-sdk
+   ```
+
+2. Install .NET 8.0 Runtime (required for PluginPacker):
+   ```bash
+   curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime dotnet --version 8.0.0
+   ```
+
+3. Verify both are installed:
+   ```bash
+   # SDK (for building)
+   /usr/local/share/dotnet/dotnet --list-sdks
+   # Should show 8.0.x
+   
+   # Runtime (for running)
+   ~/.dotnet/dotnet --list-runtimes
+   # Should show Microsoft.NETCore.App 8.0.0
+   ```
+
+4. Set environment variables correctly:
+   ```bash
+   # For building (Steps 1-6)
+   export DOTNET_ROOT=/usr/local/share/dotnet
+   export PATH="/usr/local/share/dotnet:$PATH"
+   
+   # For packaging (Step 7)
+   export DOTNET_ROOT=~/.dotnet
+   export PATH="$DOTNET_ROOT:$PATH"
+   ```
+
+**Problem: PluginPacker fails with "Framework 'Microsoft.NETCore.App', version '8.0.0' not found"**
+
+**Solution:** You're using the SDK path instead of the runtime path. Switch to runtime:
+```bash
+export DOTNET_ROOT=~/.dotnet
+export PATH="$DOTNET_ROOT:$PATH"
+# Then run PluginPacker again
+```
 
 ### Plugin Size Issues
 
@@ -260,13 +447,51 @@ To update the plugin version:
 
 The build script is designed to work in CI/CD environments:
 
+### GitHub Actions (Windows)
 ```yaml
-# Example GitHub Actions step
 - name: Build Plugin
   run: |
     git submodule update --init --recursive
     pwsh -File build-plugin.ps1
   shell: pwsh
+```
+
+### GitHub Actions (macOS)
+```yaml
+- name: Setup .NET 8.0
+  uses: actions/setup-dotnet@v3
+  with:
+    dotnet-version: '8.0.x'
+
+- name: Install .NET 8.0 Runtime
+  run: |
+    curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime dotnet --version 8.0.0
+
+- name: Build Plugin
+  run: |
+    git submodule update --init --recursive
+    export DOTNET_ROOT=/usr/local/share/dotnet
+    export PATH="/usr/local/share/dotnet:$PATH"
+    ./build-plugin.sh
+  shell: bash
+```
+
+### Local macOS Build Script
+
+For consistent builds on macOS, you can create a wrapper script:
+
+```bash
+#!/bin/bash
+set -e
+
+# Set SDK for building
+export DOTNET_ROOT=/usr/local/share/dotnet
+export PATH="/usr/local/share/dotnet:$PATH"
+
+# Build
+./build-plugin.sh
+
+# Note: build-plugin.sh should handle runtime switching for PluginPacker
 ```
 
 ## Notes
@@ -276,7 +501,9 @@ The build script is designed to work in CI/CD environments:
 - **Production builds use `dotnet publish` to include all dependencies** - this is essential for deployment
 - Debug builds can be created but are not recommended for distribution
 - The `.btcpay` file is a ZIP archive containing the plugin DLL and all dependencies
-- Expected production package size: ~11-12 MB
+- Expected production package size: ~2-12 MB (varies based on dependencies)
+- **macOS users:** Always ensure you have both .NET 8.0 SDK (for building) and .NET 8.0 Runtime (for PluginPacker)
+- **macOS users:** The build process requires switching between SDK (`/usr/local/share/dotnet`) and Runtime (`~/.dotnet`) paths
 
 ## Support
 

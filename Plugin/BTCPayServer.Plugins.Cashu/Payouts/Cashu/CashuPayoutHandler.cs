@@ -85,16 +85,10 @@ public class CashuPayoutHandler : IPayoutHandler
 
     public async Task TrackClaim(ClaimRequest claimRequest, PayoutData payoutData)
     {
-        // Only generate token for direct payouts (not pull payment claims)
-        // Pull payment claims are for receiving - user provides their token
-        // Direct payouts are for sending - we generate token with QR code
-        if (payoutData.PullPaymentDataId != null)
-        {
-            // This is a pull payment claim (receiving) - no token generation needed
-            return;
-        }
-
-        // This is a direct payout (sending) - generate token immediately
+        // Generate token for both direct payouts and pull payment claims
+        // For pull payments: we're sending tokens TO the user, so we need to generate them
+        // For direct payouts: we're sending tokens, so we generate them
+        // In both cases, we generate the token immediately when the payout is created
         await GenerateCashuTokenForPayoutAtCreation(payoutData, claimRequest);
     }
 
@@ -104,6 +98,15 @@ public class CashuPayoutHandler : IPayoutHandler
         if (string.IsNullOrEmpty(destination))
         {
             // Allow empty for payouts - validation will check context in ValidateClaimDestination
+            return Task.FromResult<(IClaimDestination, string)>(
+                (new CashuQRCodeClaimDestination(), null!));
+        }
+
+        // Special keywords that indicate "generate token and show QR code"
+        // These allow users to claim without providing a specific destination
+        var lowerDestination = destination.ToLowerInvariant();
+        if (lowerDestination == "cashu" || lowerDestination == "qr" || lowerDestination == "qrcode" || lowerDestination == "generate")
+        {
             return Task.FromResult<(IClaimDestination, string)>(
                 (new CashuQRCodeClaimDestination(), null!));
         }
@@ -128,27 +131,26 @@ public class CashuPayoutHandler : IPayoutHandler
                 (new CashuEmailClaimDestination(destination), null!));
         }
 
-        // Default: treat as a generic Cashu destination (could be phone number or other identifier)
+        // For pull payments, if it's not a token or email, treat it as "generate token" request
+        // This allows users to enter anything (like "cashu", "qr", or any text) to trigger token generation
+        // The token will be generated and shown as a QR code
         return Task.FromResult<(IClaimDestination, string)>(
-            (new CashuGenericClaimDestination(destination), null!));
+            (new CashuQRCodeClaimDestination(), null!));
     }
 
     public (bool valid, string? error) ValidateClaimDestination(IClaimDestination claimDestination, PullPaymentBlob? pullPaymentBlob)
     {
-        // Allow QR code claim destination for direct payouts only (when pullPaymentBlob is null)
-        // For pull payment claims (receiving), destination is required
+        // For Cashu pull payments, we're sending tokens TO the user, so empty destination (QR code) is allowed
+        // This allows users to claim without providing a destination - we'll generate the token for them
         if (claimDestination is CashuQRCodeClaimDestination)
         {
-            if (pullPaymentBlob == null)
-            {
-                // This is a direct payout (sending) - QR code claim is allowed
-                return (true, null);
-            }
-            // This is a pull payment claim (receiving) - destination is required
-            return (false, "Destination is required for pull payment claims");
+            // QR code claim destination is allowed for both direct payouts and pull payments
+            // For pull payments: we generate the token and show QR code
+            // For direct payouts: we generate the token and show QR code
+            return (true, null);
         }
         
-        // For other destination types, accept them
+        // For other destination types (token, email, etc.), accept them
         return (true, null);
     }
 
@@ -383,7 +385,18 @@ public class CashuPayoutHandler : IPayoutHandler
             await using var cashuCtx = _cashuDbContextFactory.CreateContext();
             
             // At creation time, use OriginalAmount (Amount is set during approval)
-            var amountSatoshis = (ulong)Money.Coins(payout.OriginalAmount).Satoshi;
+            // OriginalAmount is in OriginalCurrency, which could be "SATS" or "BTC"
+            ulong amountSatoshis;
+            if (payout.OriginalCurrency == "SATS")
+            {
+                // Already in satoshis - no conversion needed
+                amountSatoshis = (ulong)payout.OriginalAmount;
+            }
+            else
+            {
+                // Assume BTC or other currency - convert from BTC to satoshis
+                amountSatoshis = (ulong)Money.Coins(payout.OriginalAmount).Satoshi;
+            }
 
             // Get stored proofs from the store's Cashu wallet
             var storedProofs = await cashuCtx.Proofs

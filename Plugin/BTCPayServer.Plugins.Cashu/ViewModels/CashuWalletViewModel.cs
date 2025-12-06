@@ -9,6 +9,7 @@ public class CashuWalletViewModel
 {
    public List<(string Mint, string Unit, ulong Amount)> AvaibleBalances { get; set; }
    public List<ExportedToken> ExportedTokens { get; set; }
+   public string StoreId { get; set; }
 
    public IEnumerable<(decimal Amount, string Unit)> GroupedBalances => AvaibleBalances
        .GroupBy(b => b.Unit)

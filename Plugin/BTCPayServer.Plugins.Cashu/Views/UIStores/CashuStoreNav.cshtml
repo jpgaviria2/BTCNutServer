@@ -1,0 +1,20 @@
+@{
+    var storeId = (string?)ViewContext.RouteData.Values["storeId"] ?? ViewData["StoreId"] as string;
+    if (string.IsNullOrEmpty(storeId))
+    {
+        return;
+    }
+
+    var currentPath = Context.Request.Path.Value ?? string.Empty;
+    var cashuBase = $"/stores/{storeId}/cashu";
+    var isActive = currentPath.StartsWith(cashuBase, StringComparison.OrdinalIgnoreCase);
+}
+<li class="nav-item">
+    <a class="nav-link @(isActive ? "active" : string.Empty)"
+       asp-controller="Cashu"
+       asp-action="Wallet"
+       asp-route-storeId="@storeId">
+        Cashu
+    </a>
+</li>
+

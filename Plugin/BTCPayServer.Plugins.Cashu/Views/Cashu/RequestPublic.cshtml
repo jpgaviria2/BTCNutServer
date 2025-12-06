@@ -1,0 +1,84 @@
+@model BTCPayServer.Plugins.Cashu.ViewModels.CashuRequestPublicViewModel
+@{
+    ViewData["Title"] = "Cashu Request";
+}
+
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-7 col-md-9">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h2 class="mb-4 text-center">Send Cashu</h2>
+
+                    <ul class="list-group list-group-flush mb-3">
+                        <li class="list-group-item px-0 py-2"><strong>Amount:</strong> <span class="font-monospace">@Model.FormattedAmount</span></li>
+                        @if (!string.IsNullOrEmpty(Model.Memo))
+                        {
+                            <li class="list-group-item px-0 py-2"><strong>Memo:</strong> @Model.Memo</li>
+                        }
+                        <li class="list-group-item px-0 py-2"><strong>Request ID:</strong> <span class="font-monospace">@Model.RequestId</span></li>
+                        @if (Model.ExpiresAt.HasValue)
+                        {
+                            <li class="list-group-item px-0 py-2"><strong>Expires:</strong> @Model.ExpiresAt.Value.ToString("u")</li>
+                        }
+                        @if (Model.IsReceived && Model.ReceivedAt.HasValue)
+                        {
+                            <li class="list-group-item px-0 py-2"><strong>Received at:</strong> @Model.ReceivedAt.Value.ToString("u")</li>
+                        }
+                    </ul>
+
+                    @if (Model.IsExpired)
+                    {
+                        <div class="alert alert-warning">This request has expired.</div>
+                    }
+                    else if (Model.IsReceived && !string.IsNullOrEmpty(Model.ReceivedToken))
+                    {
+                        <div class="alert alert-success">Token received.</div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold" for="tokenValue">Received Token</label>
+                            <div class="input-group">
+                                <input id="tokenValue" class="form-control font-monospace" value="@Model.ReceivedToken" readonly autocomplete="off" spellcheck="false" style="background: #f8f9fa;">
+                                <button type="button" class="btn btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('tokenValue').value)">
+                                    Copy
+                                </button>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrEmpty(Model.ReceivedMint))
+                        {
+                            <div class="mb-3">
+                                <strong>Mint:</strong> <span class="font-monospace">@Model.ReceivedMint</span>
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(Model.Error))
+                        {
+                            <div class="alert alert-warning">@Model.Error</div>
+                        }
+                    }
+                    else
+                    {
+                        @if (!string.IsNullOrEmpty(Model.Error))
+                        {
+                            <div class="alert alert-danger">@Model.Error</div>
+                        }
+                        <form method="post">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold" for="tokenText">Paste Cashu token</label>
+                                <textarea name="tokenText" class="form-control font-monospace" rows="4" placeholder="cashuB..." required></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="" id="cameraNote" disabled>
+                                    <label class="form-check-label" for="cameraNote">
+                                        You can also scan a Cashu token QR with your wallet, then paste it here.
+                                    </label>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">Send Token</button>
+                        </form>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

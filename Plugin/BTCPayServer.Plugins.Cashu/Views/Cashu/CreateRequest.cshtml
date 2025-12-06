@@ -1,0 +1,38 @@
+@model BTCPayServer.Plugins.Cashu.ViewModels.CashuRequestCreateViewModel
+@{
+    ViewData["Title"] = "Create Cashu Request";
+}
+
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-7 col-md-9">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h2 class="mb-4 text-center">Create Cashu Request</h2>
+                    <form method="post">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold" for="AmountSats">Amount (sats, optional)</label>
+                            <input asp-for="AmountSats" class="form-control" min="1" placeholder="Leave empty for any amount" />
+                            <span asp-validation-for="AmountSats" class="text-danger"></span>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold" for="Memo">Memo (optional)</label>
+                            <input asp-for="Memo" class="form-control" maxlength="200" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold" for="ExpiryMinutes">Expiry (minutes, optional)</label>
+                            <input asp-for="ExpiryMinutes" class="form-control" min="0" placeholder="e.g. 60 for 1 hour" />
+                            <span asp-validation-for="ExpiryMinutes" class="text-danger"></span>
+                        </div>
+                        <div class="d-flex justify-content-end">
+                            <button type="submit" class="btn btn-primary">Create Request</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<partial name="_ValidationScriptsPartial" />
+

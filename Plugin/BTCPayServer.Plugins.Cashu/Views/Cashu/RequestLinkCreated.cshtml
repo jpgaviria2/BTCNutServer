@@ -1,0 +1,38 @@
+@model BTCPayServer.Plugins.Cashu.ViewModels.CashuRequestLinkViewModel
+@{
+    ViewData["Title"] = "Cashu Request Created";
+}
+
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-7 col-md-9">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h2 class="mb-3 text-center">Request Link Created</h2>
+                    <p class="text-center text-muted mb-4">Share this link so someone can send you Cashu ecash.</p>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" for="requestLink">Request Link</label>
+                        <div class="input-group">
+                            <input id="requestLink" class="form-control" value="@Model.RequestUrl" readonly />
+                            <button type="button" class="btn btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('requestLink').value)">Copy</button>
+                        </div>
+                    </div>
+                    <ul class="list-group list-group-flush mb-3">
+                        <li class="list-group-item px-0 py-2"><strong>Amount:</strong> <span class="font-monospace">@(Model.AmountSats?.ToString() ?? "Any amount")</span></li>
+                        @if (!string.IsNullOrEmpty(Model.Memo))
+                        {
+                            <li class="list-group-item px-0 py-2"><strong>Memo:</strong> @Model.Memo</li>
+                        }
+                        <li class="list-group-item px-0 py-2"><strong>Created:</strong> @Model.CreatedAt.ToString("u")</li>
+                        <li class="list-group-item px-0 py-2"><strong>Expires:</strong> @(Model.ExpiresAt?.ToString("u") ?? "No expiry")</li>
+                        <li class="list-group-item px-0 py-2"><strong>Request ID:</strong> <span class="font-monospace">@Model.RequestId</span></li>
+                    </ul>
+                    <div class="alert alert-info small mb-0">
+                        The sender can scan the link QR or open the URL, then paste/scan their Cashu token to pay you.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

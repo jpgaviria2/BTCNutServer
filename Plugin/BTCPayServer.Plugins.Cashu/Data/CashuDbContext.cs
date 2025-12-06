@@ -21,6 +21,8 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
     public DbSet<StoredProof> Proofs { get; set; }
     public DbSet<FailedTransaction> FailedTransactions { get; set; }
     public DbSet<ExportedToken> ExportedTokens { get; set; }
+    public DbSet<CashuClaim> CashuClaims { get; set; }
+    public DbSet<CashuRequest> CashuRequests { get; set; }
 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -125,6 +127,21 @@ public class CashuDbContext(DbContextOptions<CashuDbContext> options, bool desig
                             c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
                             c => c.ToArray()));
             });
+        });
+
+        modelBuilder.Entity<CashuClaim>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+            entity.HasIndex(c => c.StoreId);
+            entity.Property(c => c.AmountSats).IsRequired();
+            entity.Property(c => c.Status).HasConversion<int>();
+        });
+
+        modelBuilder.Entity<CashuRequest>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.HasIndex(r => r.StoreId);
+            entity.Property(r => r.Status).HasConversion<int>();
         });
 
     }

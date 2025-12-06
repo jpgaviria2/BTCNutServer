@@ -1,0 +1,59 @@
+@model BTCPayServer.Plugins.Cashu.ViewModels.CashuClaimPublicViewModel
+@{
+    ViewData["Title"] = "Cashu Claim";
+}
+
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-7 col-md-9">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h2 class="mb-4 text-center">Cashu Claim</h2>
+
+                    @if (Model.IsExpired)
+                    {
+                        <div class="alert alert-warning">This claim has expired.</div>
+                    }
+                    else if (!string.IsNullOrEmpty(Model.Error) && string.IsNullOrEmpty(Model.Token))
+                    {
+                        <div class="alert alert-danger">Could not generate token: @Model.Error</div>
+                    }
+                    else if (string.IsNullOrEmpty(Model.Token))
+                    {
+                        <div class="alert alert-info">Preparing your token...</div>
+                    }
+                    else
+                    {
+                        <div class="d-flex flex-column align-items-center mb-4 qrcode-container">
+                            <canvas id="qrcode" style="max-width: 240px; width: 100%; height: auto;"></canvas>
+                            <div class="invisible" id="token-dummy-div" data-token="@Model.Token"></div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold" for="tokenValue">Token</label>
+                            <div class="input-group">
+                                <input id="tokenValue" class="form-control font-monospace" value="@Model.Token" readonly autocomplete="off" spellcheck="false" style="background: #f8f9fa;">
+                                <button type="button" class="btn btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('tokenValue').value)">
+                                    Copy
+                                </button>
+                            </div>
+                        </div>
+                        <ul class="list-group list-group-flush mb-3">
+                            <li class="list-group-item px-0 py-2"><strong>Amount:</strong> <span class="font-monospace">@Model.FormattedAmount</span></li>
+                            <li class="list-group-item px-0 py-2"><strong>Mint Address:</strong> <span class="font-monospace">@Model.Mint</span></li>
+                            <li class="list-group-item px-0 py-2"><strong>Claim ID:</strong> <span class="font-monospace">@Model.ClaimId</span></li>
+                            @if (Model.ClaimedAt.HasValue)
+                            {
+                                <li class="list-group-item px-0 py-2"><strong>Claimed at:</strong> @Model.ClaimedAt.Value.ToString("u")</li>
+                            }
+                        </ul>
+                        <div class="alert alert-info small mb-0">
+                            Scan the QR code or copy the token. This token contains your Cashu ecash.
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script type="module" src="~/Resources/js/bundle.js" asp-append-version="true"></script>
+

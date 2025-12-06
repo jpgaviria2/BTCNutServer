@@ -5,8 +5,12 @@ using BTCPayServer.Payments;
 using BTCPayServer.Plugins.Cashu.Data;
 using BTCPayServer.Plugins.Cashu.PaymentHandlers;
 using BTCPayServer.Plugins.Cashu.Payouts.Cashu;
+using Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation;
+using Microsoft.AspNetCore.Mvc.Razor;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.FileProviders;
+using System.IO;
 
 namespace BTCPayServer.Plugins.Cashu;
 
@@ -76,6 +80,20 @@ public class CashuPlugin : BaseBTCPayServerPlugin
             factory.ConfigureBuilder(o);
         });
         services.AddHostedService<MigrationRunner>();
+
+        // Ensure Razor can locate plugin views/partials (physical publish + embedded)
+        services.AddMvc()
+            .AddApplicationPart(typeof(CashuPlugin).Assembly)
+            .AddRazorRuntimeCompilation(options =>
+            {
+                var assembly = typeof(CashuPlugin).Assembly;
+                var pluginDir = Path.GetDirectoryName(assembly.Location);
+                if (!string.IsNullOrEmpty(pluginDir))
+                {
+                    options.FileProviders.Add(new PhysicalFileProvider(pluginDir));
+                }
+                options.FileProviders.Add(new EmbeddedFileProvider(assembly, "BTCPayServer.Plugins.Cashu"));
+            });
             
         base.Execute(services);
     }

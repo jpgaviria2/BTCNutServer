@@ -296,7 +296,12 @@ public class CashuController: Controller
         {
             TempData[WellKnownTempData.ErrorMessage] = $"Couldn't load {unavailableMints.Count} mints: {String.Join(", ", unavailableMints)}";
         }
-        var viewModel = new CashuWalletViewModel {AvaibleBalances = groupedProofs, ExportedTokens = exportedTokens};
+        var viewModel = new CashuWalletViewModel
+        {
+            AvaibleBalances = groupedProofs,
+            ExportedTokens = exportedTokens,
+            StoreId = StoreData.Id
+        };
         
         return View(viewModel);
     }
@@ -491,16 +496,18 @@ public class CashuController: Controller
             return RedirectToAction("CashuWallet", new { storeId = StoreData.Id });
         }
 
-        var model = new ViewModels.ExportedTokenViewModel()
+        var model = new ViewModels.PullPaymentClaimViewModel()
         {
             Token = proof.Token,
             Amount = proof.Amount,
             Unit = "sat",
-            MintAddress = proof.Mint
+            MintAddress = proof.Mint,
+            PayoutId = payoutId,
+            StoreId = StoreData.Id
         };
         
-        // Reuse ExportedToken view for QR code display
-        return View("ExportedToken", model);
+        // Return PullPaymentClaim view to display Cashu token QR code
+        return View("PullPaymentClaim", model);
     }
 
     /// <summary>

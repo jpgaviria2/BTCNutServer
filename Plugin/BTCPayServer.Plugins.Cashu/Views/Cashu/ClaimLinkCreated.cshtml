@@ -1,0 +1,34 @@
+@model BTCPayServer.Plugins.Cashu.ViewModels.CashuClaimLinkViewModel
+@{
+    ViewData["Title"] = "Cashu Claim Link Created";
+}
+
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-7 col-md-9">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h2 class="mb-3 text-center">Claim Link Created</h2>
+                    <p class="text-center text-muted mb-4">Share this link so the recipient can claim the ecash token.</p>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" for="claimLink">Claim Link</label>
+                        <div class="input-group">
+                            <input id="claimLink" class="form-control" value="@Model.ClaimUrl" readonly />
+                            <button type="button" class="btn btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('claimLink').value)">Copy</button>
+                        </div>
+                    </div>
+                    <ul class="list-group list-group-flush mb-3">
+                        <li class="list-group-item px-0 py-2"><strong>Amount:</strong> <span class="font-monospace">@Model.AmountSats sats</span></li>
+                        <li class="list-group-item px-0 py-2"><strong>Created:</strong> @Model.CreatedAt.ToString("u")</li>
+                        <li class="list-group-item px-0 py-2"><strong>Expires:</strong> @(Model.ExpiresAt?.ToString("u") ?? "No expiry")</li>
+                        <li class="list-group-item px-0 py-2"><strong>Claim ID:</strong> <span class="font-monospace">@Model.ClaimId</span></li>
+                    </ul>
+                    <div class="alert alert-info small mb-0">
+                        The recipient will see the Cashu token as a QR code and as raw text to copy.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
